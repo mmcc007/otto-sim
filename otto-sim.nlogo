@@ -15,12 +15,16 @@ globals                    ;; Setup global variables
 
 turtles-own [
   origin                   ;; where originally found
+  distance-traveled
 ]
 
 customers-own[
   destination
   wait-time
-  distance-traveled
+]
+
+cars-own [
+  paid-distance
 ]
 
 ;;;;;;;;;;;;;;;;;;;;;;
@@ -150,27 +154,26 @@ to-report next-scooter-patch ; scooter method
   let choice patch-here
   let choices neighbors with [ pcolor = white ]
   ask link-neighbors [ ; get the car linked to the scooter (only 0 or 1 links)
-    ; if on board car, move towards origin
-    let car-in-range? member? [patch-here] of myself [ neighbors ] of patch-here
-    let on-board? patch-here = [patch-here] of myself
+    ; only move if there is a customer (todo: optimization: move to car )
     let linked-customer one-of link-neighbors with [is-customer? self]
-    ; only move if there is a customer (todo: move to car optimization)
     if linked-customer != nobody [
+      let on-board? patch-here = [patch-here] of myself
+      let car-in-range? member? [patch-here] of myself [ neighbors ] of patch-here
+      ; if on board car, move towards origin
       ifelse car-in-range? or on-board? [
-        ;      set origin [origin] of one-of [link-neighbors with [is-customer? self]] of myself
-        ;      show (word myself " moving toward " linked-customer)
+;        show (word myself " moving toward " linked-customer)
         set choice min-one-of choices [ distance [patch-here] of linked-customer ]
       ]
       [
         ; move towards car
-        ;      show (word myself " moving toward car " self)
+;        show (word myself " moving toward car " self)
         set choice min-one-of choices [ distance myself ]
       ]
       ; remove link to car if arrived at customer
       let near-customer? member? [patch-here] of linked-customer [ neighbors ] of patch-here
       if near-customer? [
         let scooter-self myself
-        show word "removing link to " scooter-self
+;        show word "removing link to " scooter-self
         ask links with [member? scooter-self both-ends] [ die ]
       ]
     ]
@@ -188,7 +191,7 @@ to-report next-car-patch ; car method
     let on-board? patch-here = [patch-here] of myself
 ;    show ( word "in-range-of-car?=" in-range-of-car? " on-board?=" on-board? )
     if in-range-of-car? or on-board? [
-      show (word myself " following " self)
+;      show (word myself " following " self)
       set choice patch-here
     ]
   ]
@@ -218,7 +221,7 @@ to-report next-customer-patch ; customer method
     let dest-in-range? member? dest neighbors
     if dest-in-range? [
       let customer-self myself
-      show word "removing link to " customer-self
+;      show word "removing link to " customer-self
       ask links with [member? customer-self both-ends] [ die ]
     ]
   ]
@@ -254,7 +257,6 @@ to-report get-goal ; car method
     if patch-here = [patch-here] of myself [ ; brain on board
       ifelse is-scooter? self [
         ; find customer origin
-;        set goal [patch-here] of item 1 sort-on [who] [link-neighbors] of myself
         set goal [origin] of one-of [link-neighbors with [is-customer? self]] of myself
       ][
         set goal destination ; customer destination
@@ -317,7 +319,7 @@ num-cars
 num-cars
 0
 100
-50.0
+2.0
 1
 1
 NIL
@@ -332,7 +334,7 @@ num-scooters
 num-scooters
 0
 50
-25.0
+1.0
 1
 1
 NIL
@@ -358,7 +360,7 @@ num-customers
 num-customers
 0
 100
-100.0
+2.0
 1
 1
 NIL
