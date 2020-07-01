@@ -11,6 +11,14 @@ globals                    ;; Setup global variables
   roads                    ;; agentset containing the patches that are roads
   ; optimizations
   min-trip-length
+  ; costs
+  car-cost-per-time        ;; cost of having on road (including amortization, insurance, etc)
+  car-cost-per-distance    ;; cost for traveling (including energy, wear-and-tear, etc)
+  scooter-cost-per-time
+  scooter-cost-per-distance
+  operator-cost-per-time   ;; cost of operator's time
+  car-fee-per-distance     ;; fee for driving car
+
 ]
 
 turtles-own [
@@ -45,6 +53,13 @@ to setup-globals
   set grid-size-y 9           ;; road grid-size-y for enviornment
   set grid-x-inc world-width / grid-size-x
   set grid-y-inc world-height / grid-size-y
+
+  set car-cost-per-time 1           ;; cost of having on road (including amortization, insurance, etc)
+  set car-cost-per-distance 5      ;; cost for traveling (including energy, wear-and-tear, etc)
+  set scooter-cost-per-time 0.25
+  set scooter-cost-per-distance 1.25
+  set operator-cost-per-time 15
+  set car-fee-per-distance 50
   ; optimizations
   set min-trip-length 20
 end
@@ -122,6 +137,7 @@ to go
   ask cars [
     move-to next-car-patch
   ]
+  if count customers = 0 [stop]
   tick ; for gathering stats?
 end
 
@@ -178,12 +194,13 @@ to-report next-scooter-patch ; scooter method
       ]
     ]
   ]
+  if choice != patch-here [set distance-traveled distance-traveled + 1]
 ;  show (word "choice=" choice " choices=" choices )
   report choice
 end
 
 ; move car
-; follow linked scooter or customer once in range
+; follow linked scooter or linked customer once in range
 to-report next-car-patch ; car method
   let choice patch-here
   ask link-neighbors [ ; linked to 0 or 1 customer and 0 or 1 scooter
@@ -195,6 +212,7 @@ to-report next-car-patch ; car method
       set choice patch-here
     ]
   ]
+  if choice != patch-here [set distance-traveled distance-traveled + 1]
 ;  show (word "choice=" choice )
   report choice
 end
@@ -211,6 +229,7 @@ to-report next-customer-patch ; customer method
     let on-board? patch-here = [patch-here] of myself
     ifelse on-board? [
       set choice min-one-of choices [ distance  dest]
+      set paid-distance paid-distance + 1 ; for car
     ][
       let car-in-range? member? patch-here [ neighbors ] of [patch-here] of myself
       if car-in-range? [ ; move to car
@@ -218,6 +237,7 @@ to-report next-customer-patch ; customer method
       ]
     ]
     ; remove customer (and link to car) if arrived at destination
+    ; (or just die customer in go method)
     let dest-in-range? member? dest neighbors
     if dest-in-range? [
       let customer-self myself
@@ -225,6 +245,7 @@ to-report next-customer-patch ; customer method
       ask links with [member? customer-self both-ends] [ die ]
     ]
   ]
+  if choice != patch-here [set distance-traveled distance-traveled + 1]
 ;  show (word "choice=" choice )
   report choice
 end
@@ -264,6 +285,26 @@ to-report get-goal ; car method
     ]
   ]
   report goal
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;
+;; Plot Procedures    ;;
+;;;;;;;;;;;;;;;;;;;;;;;;
+; calc cost to date
+to-report cost
+;    set cars-cost sum [travel-distance * car-cost-per-distance] of cars + (count cars) * car-cost-per-time * ticks
+;    let scooters-cost sum [travel-distance * scooter-cost-per-distance] of scooters + (count scooters) * (scooter-cost-per-time + operator-cost-per-time) * ticks
+  let active-time  ticks
+    let cars-cost sum [distance-traveled * car-cost-per-distance] of cars + sum [car-cost-per-time * active-time] of cars
+    let scooters-cost sum [distance-traveled * scooter-cost-per-distance] of scooters + sum [(scooter-cost-per-time + operator-cost-per-time) * active-time] of scooters
+    report cars-cost + scooters-cost
+end
+
+; calc sales to date
+to-report sales
+  let _sales sum [paid-distance * car-fee-per-distance] of cars
+  ;show word "sales=" _sales
+  report _sales
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -319,7 +360,7 @@ num-cars
 num-cars
 0
 100
-2.0
+10.0
 1
 1
 NIL
@@ -334,7 +375,7 @@ num-scooters
 num-scooters
 0
 50
-1.0
+5.0
 1
 1
 NIL
@@ -360,7 +401,7 @@ num-customers
 num-customers
 0
 100
-2.0
+100.0
 1
 1
 NIL
@@ -399,6 +440,47 @@ NIL
 NIL
 NIL
 1
+
+PLOT
+779
+35
+1113
+185
+Distance
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"Paid" 1.0 0 -16777216 true "" "plot sum [paid-distance] of cars"
+"Cars" 1.0 0 -7500403 true "" "plot sum [distance-traveled] of cars"
+"Scooters" 1.0 0 -2674135 true "" "plot sum [distance-traveled] of scooters"
+
+PLOT
+780
+198
+1112
+348
+Profit
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"Cost" 1.0 0 -16777216 true "" "plot cost"
+"Sales" 1.0 0 -7500403 true "" "plot sales"
+"Profit" 1.0 0 -2674135 true "" "plot sales - cost"
+"Zero" 1.0 0 -955883 true "" "plot 0"
 
 @#$#@#$#@
 ## WHAT IS IT?
