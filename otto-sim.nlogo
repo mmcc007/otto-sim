@@ -131,13 +131,13 @@ to go
   ]
   ask customers [
     move-to next-customer-patch
-    ; remove customers that have completed trips
-    if member? destination neighbors [die]
+    ; hide customers that have completed trips
+    if member? destination neighbors [hide-turtle]
   ]
   ask cars [
     move-to next-car-patch
   ]
-  if count customers = 0 [stop]
+  if count customers with [hidden? = false ] = 0 [stop]
   tick ; for gathering stats?
 end
 
@@ -149,7 +149,7 @@ to links-to-cars
   let scooterless-cars cars with [count link-neighbors = 0]
   ; link a scooter to closest car (only if there is an unlinked customer)
   ; a carless customer is a customer with no link to a car
-  let carless-customers customers with [not any? link-neighbors]
+  let carless-customers customers with [not any? link-neighbors and hidden? = false]
   if any? carless-scooters and any? scooterless-cars and any? carless-customers
     [ask one-of carless-scooters [
       create-link-with min-one-of scooterless-cars [distance myself]
@@ -184,6 +184,7 @@ to-report next-scooter-patch ; scooter method
         ; move towards car
 ;        show (word myself " moving toward car " self)
         set choice min-one-of choices [ distance myself ]
+        set distance-traveled distance-traveled + 1
       ]
       ; remove link to car if arrived at customer
       let near-customer? member? [patch-here] of linked-customer [ neighbors ] of patch-here
@@ -225,11 +226,13 @@ to-report next-customer-patch ; customer method
   let choice patch-here
   let choices neighbors with [ pcolor = white ]
   let dest destination
+  let incr-wait-time? true
   ask link-neighbors [ ; linked to only 0 or 1 car
     let on-board? patch-here = [patch-here] of myself
     ifelse on-board? [
       set choice min-one-of choices [ distance  dest]
       set paid-distance paid-distance + 1 ; for car
+      set incr-wait-time? false ; not waiting since onboard
     ][
       let car-in-range? member? patch-here [ neighbors ] of [patch-here] of myself
       if car-in-range? [ ; move to car
@@ -246,6 +249,8 @@ to-report next-customer-patch ; customer method
     ]
   ]
   if choice != patch-here [set distance-traveled distance-traveled + 1]
+  if incr-wait-time? and hidden? = false [set wait-time wait-time + 1] ; increment unless onboard
+
 ;  show (word "choice=" choice )
   report choice
 end
@@ -360,7 +365,7 @@ num-cars
 num-cars
 0
 100
-10.0
+20.0
 1
 1
 NIL
@@ -375,7 +380,7 @@ num-scooters
 num-scooters
 0
 50
-5.0
+10.0
 1
 1
 NIL
@@ -401,7 +406,7 @@ num-customers
 num-customers
 0
 100
-100.0
+40.0
 1
 1
 NIL
@@ -481,6 +486,24 @@ PENS
 "Sales" 1.0 0 -7500403 true "" "plot sales"
 "Profit" 1.0 0 -2674135 true "" "plot sales - cost"
 "Zero" 1.0 0 -955883 true "" "plot 0"
+
+PLOT
+780
+369
+1113
+519
+Avg Wait Time
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot (sum [wait-time] of customers) / (count customers)"
 
 @#$#@#$#@
 ## WHAT IS IT?
