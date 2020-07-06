@@ -125,7 +125,7 @@ end
 ;;;;;;;;;;;;;;;;;;;;;;;;
 
 to go
-  links-to-cars
+  ifelse enable-scooters [links-to-cars][link-custs-to-cars]
   ask scooters [
     move-to next-scooter-patch
   ]
@@ -157,6 +157,18 @@ to links-to-cars
   ]
   ; a customerless car is a car with a link to a scooter but no link to a customer
   let customerless-cars cars with [count link-neighbors = 1 and is-scooter? one-of link-neighbors]
+  ; link a customer to closest car
+  if any? carless-customers and any? customerless-cars [ask one-of carless-customers [
+    create-link-with min-one-of customerless-cars [distance myself]
+  ]]
+end
+
+; link customers to cars (no scooters) (not tested yet!)
+to link-custs-to-cars
+  ; a customerless car is a car with no link to a customer
+  let customerless-cars cars with [count link-neighbors = 0]
+  ; a carless customer is a customer with no link to a car
+  let carless-customers customers with [not any? link-neighbors and hidden? = false]
   ; link a customer to closest car
   if any? carless-customers and any? customerless-cars [ask one-of carless-customers [
     create-link-with min-one-of customerless-cars [distance myself]
@@ -365,7 +377,7 @@ num-cars
 num-cars
 0
 100
-20.0
+50.0
 1
 1
 NIL
@@ -380,7 +392,7 @@ num-scooters
 num-scooters
 0
 50
-10.0
+25.0
 1
 1
 NIL
@@ -406,7 +418,7 @@ num-customers
 num-customers
 0
 100
-40.0
+100.0
 1
 1
 NIL
