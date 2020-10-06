@@ -1,334 +1,89 @@
-breed [cars car]
-breed [scooters scooter]
-breed [customers customer]
+extensions [ gis ]
+breed [ points point ]
+globals [ city-dataset ]
 
-globals                    ;; Setup global variables
-[
-  grid-size-x              ;; Number of grids of streets in x direction
-  grid-size-y              ;; Number of grids of streets in y direction
-  grid-x-inc               ;; the amount of patches in between two roads in the x direction
-  grid-y-inc               ;; the amount of patches in between two roads in the y direction
-  roads                    ;; agentset containing the patches that are roads
-  ; optimizations
-  min-trip-length
-  ; costs
-  car-cost-per-time        ;; cost of having on road (including amortization, insurance, etc)
-  car-cost-per-distance    ;; cost for traveling (including energy, wear-and-tear, etc)
-  scooter-cost-per-time
-  scooter-cost-per-distance
-  operator-cost-per-time   ;; cost of operator's time
-  car-fee-per-distance     ;; fee for driving car
-
-]
-
-turtles-own [
-  origin                   ;; where originally found
-  distance-traveled
-]
-
-customers-own[
-  destination
-  wait-time
-]
-
-cars-own [
-  paid-distance
-]
-
-;;;;;;;;;;;;;;;;;;;;;;
-;; Setup Procedures ;;
-;;;;;;;;;;;;;;;;;;;;;;
 to setup
   clear-all
-  setup-globals
-  setup-patches
-  setup-cars num-cars
-  if enable-scooters [setup-scooters num-scooters]
-  setup-customers num-customers ; for now no new customers
+  let city "santa_monica"
+  let project "Street_Centerlines"
+;  let city "ZC"
+;  let project "ZS"
+  let path (word "data/" city "/" project)
+  ; Note that setting the coordinate system here is optional, as
+  ; long as all of your datasets use the same coordinate system.
+  gis:load-coordinate-system (word path ".prj")
+  ; Load all of our datasets
+  set city-dataset gis:load-dataset (word path ".shp")
+  ; Set the world envelope to the union of all of our dataset's envelopes
+  gis:set-world-envelope (gis:envelope-of city-dataset)
   reset-ticks
 end
 
-to setup-globals
-  set grid-size-x 9           ;; road grid-size-x for enviornment
-  set grid-size-y 9           ;; road grid-size-y for enviornment
-  set grid-x-inc world-width / grid-size-x
-  set grid-y-inc world-height / grid-size-y
-
-  set car-cost-per-time 1           ;; cost of having on road (including amortization, insurance, etc)
-  set car-cost-per-distance 5      ;; cost for traveling (including energy, wear-and-tear, etc)
-  set scooter-cost-per-time 0.25
-  set scooter-cost-per-distance 1.25
-  set operator-cost-per-time 15
-  set car-fee-per-distance 50
-  ; optimizations
-  set min-trip-length 20
-end
-
-to setup-patches
-  ask patches [
-    set pcolor brown + 3
-  ]
-  set roads patches with [
-    (floor ((pxcor + max-pxcor - floor (grid-x-inc - 1)) mod grid-x-inc) = 0) or
-    (floor ((pycor + max-pycor) mod grid-y-inc) = 0)
-  ]
-  ask roads [ set pcolor white ]
-end
-
-; place cars on road
-to setup-cars [_num-cars]
-  create-cars _num-cars [
-    set shape "car"
-    move-to one-of roads with [ not any? turtles-on self ]
-  ]
-end
-
-; place scooters on road (with valets)
-to setup-scooters [_num-scooters]
-  create-scooters _num-scooters [
-    set shape "flag"
-    move-to one-of roads with [ not any? turtles-on self ]
-  ]
-end
-
-; generate customers each with a trip
-to setup-customers [ _num-customers ]
-  create-customers _num-customers [
-    set shape "person"
-    let _trip gen-trip
-    set origin item 0 _trip
-    set destination item 1 _trip
-    move-to origin
-  ]
-end
-
-; recursively generate a random trip exceeding minimum distance
-to-report gen-trip
-  ; Find all patches where there can be a be a source or destination (not on road)
-  let goal-candidates patches with [ pcolor = 38 and any? neighbors with [ pcolor = white ] ]
-  ;; choose at random a source location
-  let src one-of goal-candidates
-  ;; choose at random a location for the destination
-  let dst one-of goal-candidates with [ self != src ]
-  let trip ( list src dst )
-  while [trip-length trip < min-trip-length] [set trip gen-trip]
-  report trip
-end
-
-; get length of trip generated in gen-trip
-to-report trip-length [trip]
-  report [distance item 0 trip] of item 1 trip
-end
-
-;;;;;;;;;;;;;;;;;;;;;;;;
-;; Runtime Procedures ;;
-;;;;;;;;;;;;;;;;;;;;;;;;
-
-to go
-  ifelse enable-scooters [links-to-cars][link-custs-to-cars]
-  ask scooters [
-    move-to next-scooter-patch
-  ]
-  ask customers [
-    move-to next-customer-patch
-    ; hide customers that have completed trips
-    if member? destination neighbors [hide-turtle]
-  ]
-  ask cars [
-    move-to next-car-patch
-  ]
-  if count customers with [hidden? = false ] = 0 [stop]
-  tick ; for gathering stats?
-end
-
-; link scooters to cars and link customers to cars
-to links-to-cars
-  ; a carless scooter is a scooter with no link (to a car)
-  let carless-scooters scooters with [not any? link-neighbors]
-  ; a scooterless car is a car with no link to a scooter (and no customer on-board)
-  let scooterless-cars cars with [count link-neighbors = 0]
-  ; link a scooter to closest car (only if there is an unlinked customer)
-  ; a carless customer is a customer with no link to a car
-  let carless-customers customers with [not any? link-neighbors and hidden? = false]
-  if any? carless-scooters and any? scooterless-cars and any? carless-customers
-    [ask one-of carless-scooters [
-      create-link-with min-one-of scooterless-cars [distance myself]
-    ]
-  ]
-  ; a customerless car is a car with a link to a scooter but no link to a customer
-  let customerless-cars cars with [count link-neighbors = 1 and is-scooter? one-of link-neighbors]
-  ; link a customer to closest car
-  if any? carless-customers and any? customerless-cars [ask one-of carless-customers [
-    create-link-with min-one-of customerless-cars [distance myself]
-  ]]
-end
-
-; link customers to cars (no scooters) (not tested yet!)
-to link-custs-to-cars
-  ; a customerless car is a car with no link to a customer
-  let customerless-cars cars with [count link-neighbors = 0]
-  ; a carless customer is a customer with no link to a car
-  let carless-customers customers with [not any? link-neighbors and hidden? = false]
-  ; link a customer to closest car
-  if any? carless-customers and any? customerless-cars [ask one-of carless-customers [
-    create-link-with min-one-of customerless-cars [distance myself]
-  ]]
-end
-
-; move scooter
-; move toward linked car, then move toward linked customer
-; remove link when arrived at customer
-to-report next-scooter-patch ; scooter method
-  let choice patch-here
-  let choices neighbors with [ pcolor = white ]
-  ask link-neighbors [ ; get the car linked to the scooter (only 0 or 1 links)
-    ; only move if there is a customer (todo: optimization: move to car )
-    let linked-customer one-of link-neighbors with [is-customer? self]
-    if linked-customer != nobody [
-      let on-board? patch-here = [patch-here] of myself
-      let car-in-range? member? [patch-here] of myself [ neighbors ] of patch-here
-      ; if on board car, move towards origin
-      ifelse car-in-range? or on-board? [
-;        show (word myself " moving toward " linked-customer)
-        set choice min-one-of choices [ distance [patch-here] of linked-customer ]
-      ]
-      [
-        ; move towards car
-;        show (word myself " moving toward car " self)
-        set choice min-one-of choices [ distance myself ]
-        set distance-traveled distance-traveled + 1
-      ]
-      ; remove link to car if arrived at customer
-      let near-customer? member? [patch-here] of linked-customer [ neighbors ] of patch-here
-      if near-customer? [
-        let scooter-self myself
-;        show word "removing link to " scooter-self
-        ask links with [member? scooter-self both-ends] [ die ]
-      ]
-    ]
-  ]
-  if choice != patch-here [set distance-traveled distance-traveled + 1]
-;  show (word "choice=" choice " choices=" choices )
-  report choice
-end
-
-; move car
-; follow linked scooter or linked customer once in range
-to-report next-car-patch ; car method
-  let choice patch-here
-  ask link-neighbors [ ; linked to 0 or 1 customer and 0 or 1 scooter
-    let in-range-of-car? member? patch-here [ neighbors ] of [patch-here] of myself
-    let on-board? patch-here = [patch-here] of myself
-;    show ( word "in-range-of-car?=" in-range-of-car? " on-board?=" on-board? )
-    if in-range-of-car? or on-board? [
-;      show (word myself " following " self)
-      set choice patch-here
-    ]
-  ]
-  if choice != patch-here [set distance-traveled distance-traveled + 1]
-;  show (word "choice=" choice )
-  report choice
-end
-
-; move customer
-; if car in range, move to car (onboard)
-; if onboard, move towards destination
-; if customer arrives at destination, release customer
-to-report next-customer-patch ; customer method
-  let choice patch-here
-  let choices neighbors with [ pcolor = white ]
-  let dest destination
-  let incr-wait-time? true
-  ask link-neighbors [ ; linked to only 0 or 1 car
-    let on-board? patch-here = [patch-here] of myself
-    ifelse on-board? [
-      set choice min-one-of choices [ distance  dest]
-      set paid-distance paid-distance + 1 ; for car
-      set incr-wait-time? false ; not waiting since onboard
-    ][
-      let car-in-range? member? patch-here [ neighbors ] of [patch-here] of myself
-      if car-in-range? [ ; move to car
-        set choice patch-here
-      ]
-    ]
-    ; remove customer (and link to car) if arrived at destination
-    ; (or just die customer in go method)
-    let dest-in-range? member? dest neighbors
-    if dest-in-range? [
-      let customer-self myself
-;      show word "removing link to " customer-self
-      ask links with [member? customer-self both-ends] [ die ]
-    ]
-  ]
-  if choice != patch-here [set distance-traveled distance-traveled + 1]
-  if incr-wait-time? and hidden? = false [set wait-time wait-time + 1] ; increment unless onboard
-
-;  show (word "choice=" choice )
-  report choice
-end
-
-;; car must have a brain to move
-;; ie, a scooter or customer on board
-;to-report has-brain? ; car method
-;  let is-brained false
-;  ask link-neighbors [
-;;      show self
-;      if patch-here = [patch-here] of myself [set is-brained true]
+; Drawing polyline data from a shapefile, and optionally loading some
+; of the data into turtles, if label-rivers is true
+to display-rivers
+;  ask river-labels [ die ]
+  gis:set-drawing-color blue
+  gis:draw city-dataset 1
+;  if label-rivers
+;  [ foreach gis:feature-list-of rivers-dataset [ vector-feature ->
+;      let centroid gis:location-of gis:centroid-of vector-feature
+;      ; centroid will be an empty list if it lies outside the bounds
+;      ; of the current NetLogo world, as defined by our current GIS
+;      ; coordinate transformation
+;      if not empty? centroid
+;      [ create-river-labels 1
+;          [ set xcor item 0 centroid
+;            set ycor item 1 centroid
+;            set size 0
+;            set label gis:property-value vector-feature "NAME"
+;          ]
+;      ]
+;    ]
 ;  ]
-;  report is-brained
-;end
-;
-;; get turtle providing brain
-;to-report get-brain ; car method
-;  let brain nobody
-;  ask link-neighbors [
-;;      show self
-;      if patch-here = [patch-here] of myself [set brain self]
-;  ]
-;  report brain
-;end
+end
 
-; get goal of car from customer trip
-to-report get-goal ; car method
-  let goal patch-here
-  ask link-neighbors [
-    if patch-here = [patch-here] of myself [ ; brain on board
-      ifelse is-scooter? self [
-        ; find customer origin
-        set goal [origin] of one-of [link-neighbors with [is-customer? self]] of myself
-      ][
-        set goal destination ; customer destination
+; Loading polyline data into turtles connected by links
+to display-roads
+  ask points [ die ]
+  foreach gis:feature-list-of city-dataset [ vector-feature ->
+    foreach gis:vertex-lists-of vector-feature [ vertex ->
+      let previous-turtle nobody
+      let first-turtle nobody
+      ; By convention, the first and last coordinates of polygons
+      ; in a shapefile are the same, so we don't create a turtle
+      ; on the last vertex of the polygon
+      foreach vertex [ latlng ->
+        let location gis:location-of latlng
+        ; location will be an empty list if it lies outside the
+        ; bounds of the current NetLogo world, as defined by our
+        ; current GIS coordinate transformation
+        if not empty? location
+        [ create-points 1
+          [ set xcor item 0 location
+            set ycor item 1 location
+            ifelse previous-turtle = nobody
+              [ set first-turtle self ]
+              [ create-link-with previous-turtle ]
+            set hidden? true
+            set previous-turtle self
+          ]
+        ]
       ]
+      ; Link the first turtle to the last turtle to close the polygon
+;      if first-turtle != nobody and first-turtle != previous-turtle
+;      [ ask first-turtle
+;        [ create-link-with previous-turtle ]
+;      ]
     ]
   ]
-  report goal
-end
-
-;;;;;;;;;;;;;;;;;;;;;;;;
-;; Plot Procedures    ;;
-;;;;;;;;;;;;;;;;;;;;;;;;
-; calc cost to date
-to-report cost
-;    set cars-cost sum [travel-distance * car-cost-per-distance] of cars + (count cars) * car-cost-per-time * ticks
-;    let scooters-cost sum [travel-distance * scooter-cost-per-distance] of scooters + (count scooters) * (scooter-cost-per-time + operator-cost-per-time) * ticks
-  let active-time  ticks
-    let cars-cost sum [distance-traveled * car-cost-per-distance] of cars + sum [car-cost-per-time * active-time] of cars
-    let scooters-cost sum [distance-traveled * scooter-cost-per-distance] of scooters + sum [(scooter-cost-per-time + operator-cost-per-time) * active-time] of scooters
-    report cars-cost + scooters-cost
-end
-
-; calc sales to date
-to-report sales
-  let _sales sum [paid-distance * car-fee-per-distance] of cars
-  ;show word "sales=" _sales
-  report _sales
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
 210
 10
-699
-500
+647
+448
 -1
 -1
 13.0
@@ -341,10 +96,10 @@ GRAPHICS-WINDOW
 1
 1
 1
--18
-18
--18
-18
+-16
+16
+-16
+16
 0
 0
 1
@@ -352,10 +107,10 @@ ticks
 30.0
 
 BUTTON
-12
-67
-78
-100
+15
+10
+82
+44
 NIL
 setup
 NIL
@@ -368,70 +123,14 @@ NIL
 NIL
 1
 
-SLIDER
-11
-148
-183
-181
-num-cars
-num-cars
-0
-100
-50.0
-1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-11
-183
-183
-216
-num-scooters
-num-scooters
-0
-50
-25.0
-1
-1
-NIL
-HORIZONTAL
-
-SWITCH
-12
-10
-174
-43
-enable-scooters
-enable-scooters
-0
-1
--1000
-
-SLIDER
-11
-114
-183
-147
-num-customers
-num-customers
-0
-100
-100.0
-1
-1
-NIL
-HORIZONTAL
-
 BUTTON
-143
-67
-206
-100
+2
+220
+121
+254
 NIL
-go
-T
+display-rivers
+NIL
 1
 T
 OBSERVER
@@ -442,12 +141,12 @@ NIL
 1
 
 BUTTON
-79
-67
-142
-100
-step
-go
+15
+47
+105
+81
+NIL
+display-roads
 NIL
 1
 T
@@ -457,65 +156,6 @@ NIL
 NIL
 NIL
 1
-
-PLOT
-779
-35
-1113
-185
-Distance
-NIL
-NIL
-0.0
-10.0
-0.0
-10.0
-true
-true
-"" ""
-PENS
-"Paid" 1.0 0 -16777216 true "" "plot sum [paid-distance] of cars"
-"Cars" 1.0 0 -7500403 true "" "plot sum [distance-traveled] of cars"
-"Scooters" 1.0 0 -2674135 true "" "plot sum [distance-traveled] of scooters"
-
-PLOT
-780
-198
-1112
-348
-Profit
-NIL
-NIL
-0.0
-10.0
-0.0
-10.0
-true
-true
-"" ""
-PENS
-"Cost" 1.0 0 -16777216 true "" "plot cost"
-"Sales" 1.0 0 -7500403 true "" "plot sales"
-"Profit" 1.0 0 -2674135 true "" "plot sales - cost"
-"Zero" 1.0 0 -955883 true "" "plot 0"
-
-PLOT
-780
-369
-1113
-519
-Avg Wait Time
-NIL
-NIL
-0.0
-10.0
-0.0
-10.0
-true
-false
-"" ""
-PENS
-"default" 1.0 0 -16777216 true "" "plot (sum [wait-time] of customers) / (count customers)"
 
 @#$#@#$#@
 ## WHAT IS IT?

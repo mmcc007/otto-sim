@@ -1,1 +1,3 @@
 .*.tmp.nlogo
+data/tmp
+**/.DS_Store
