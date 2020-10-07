@@ -1,5 +1,7 @@
-extensions [ gis ]
+extensions [ gis nw ]
 breed [ points point ]
+undirected-link-breed [segments segment]
+segments-own [ seg-length ] ; used to find shortest route
 globals [ city-dataset ]
 
 to setup
@@ -17,6 +19,70 @@ to setup
   ; Set the world envelope to the union of all of our dataset's envelopes
   gis:set-world-envelope (gis:envelope-of city-dataset)
   reset-ticks
+end
+
+; Loading polyline data into turtles connected by links
+to display-roads
+  ask points [ die ]
+  ; only one vector feature (I think)
+  foreach gis:feature-list-of city-dataset [ vector-feature ->
+    foreach gis:vertex-lists-of vector-feature [ vertex ->
+      ; a vertex contains 2 or more points (like a polyline)
+      let first-point nobody ; used at beginning of polyline
+      let previous-point nobody
+      foreach vertex [ latlng ->
+        ; a location has 2 coordinates (x and y)
+        let location gis:location-of latlng
+        ; location will be an empty list if it lies outside the
+        ; bounds of the current NetLogo world, as defined by our
+        ; current GIS coordinate transformation
+        if not empty? location
+        [
+          let locationX item 0 location
+          let locationY item 1 location
+          ; create segment if start and end points of segment are known
+          ifelse previous-point = nobody
+          [
+            create-points 1
+            [ set xcor locationX
+              set ycor locationY
+              set hidden? true
+              set first-point self
+              set previous-point self
+            ]
+          ][
+            ; find if a point already exists at this location
+            let existing-point one-of points with [xcor = locationX and ycor = locationY]
+            ifelse not (existing-point = nobody)
+            [
+              ask existing-point [create-segment-with previous-point [set seg-length link-length]]
+              set previous-point existing-point
+            ][
+              create-points 1
+              [ set xcor locationX
+                set ycor locationY
+                create-segment-with previous-point [ set seg-length link-length ]
+                set hidden? true
+                set previous-point self
+              ]
+            ]
+          ]
+        ]
+      ]
+    ]
+  ]
+end
+
+to calc-route
+  ; get two random points and calculate route
+  ask points [set hidden? true]
+  let src one-of points
+  let dst one-of other points
+  ask src [set hidden? false]
+  ask dst [set hidden? false]
+  let route 0
+  ask src [set route nw:weighted-path-to dst seg-length]
+  show route
 end
 
 ; Drawing polyline data from a shapefile, and optionally loading some
@@ -42,48 +108,12 @@ to display-rivers
 ;    ]
 ;  ]
 end
-
-; Loading polyline data into turtles connected by links
-to display-roads
-  ask points [ die ]
-  foreach gis:feature-list-of city-dataset [ vector-feature ->
-    foreach gis:vertex-lists-of vector-feature [ vertex ->
-      let previous-turtle nobody
-      let first-turtle nobody
-      ; By convention, the first and last coordinates of polygons
-      ; in a shapefile are the same, so we don't create a turtle
-      ; on the last vertex of the polygon
-      foreach vertex [ latlng ->
-        let location gis:location-of latlng
-        ; location will be an empty list if it lies outside the
-        ; bounds of the current NetLogo world, as defined by our
-        ; current GIS coordinate transformation
-        if not empty? location
-        [ create-points 1
-          [ set xcor item 0 location
-            set ycor item 1 location
-            ifelse previous-turtle = nobody
-              [ set first-turtle self ]
-              [ create-link-with previous-turtle ]
-            set hidden? true
-            set previous-turtle self
-          ]
-        ]
-      ]
-      ; Link the first turtle to the last turtle to close the polygon
-;      if first-turtle != nobody and first-turtle != previous-turtle
-;      [ ask first-turtle
-;        [ create-link-with previous-turtle ]
-;      ]
-    ]
-  ]
-end
 @#$#@#$#@
 GRAPHICS-WINDOW
-210
-10
-647
-448
+205
+9
+773
+447
 -1
 -1
 13.0
@@ -96,8 +126,8 @@ GRAPHICS-WINDOW
 1
 1
 1
--16
-16
+-21
+21
 -16
 16
 0
@@ -129,7 +159,7 @@ BUTTON
 121
 254
 NIL
-display-rivers
+calc-route
 NIL
 1
 T
