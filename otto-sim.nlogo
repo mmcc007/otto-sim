@@ -4,6 +4,8 @@ undirected-link-breed [segments segment]
 segments-own [ seg-length ] ; used to find shortest route
 globals [ city-dataset ]
 
+; GIS file downloaded from https://www.santamonica.gov/isd/gis
+; https://gis-smgov.opendata.arcgis.com/datasets/street-centerlines
 to setup
   clear-all
   let city "santa_monica"
@@ -46,7 +48,7 @@ to display-roads
           [
             ifelse first-point = nobody
             [
-              ; start of segment
+              ; start of polyline
               create-points 1
               [ set xcor locationX
                 set ycor locationY
@@ -83,22 +85,27 @@ to display-roads
 end
 
 to calc-route
+  ; Note: still get some unroutable points. May need to smooth out data before import
   ; get two random points and calculate route
   ask points [set hidden? true]
+  ask segments [set color 5]
   let src one-of points
   let dst one-of other points
   ask src [set hidden? false]
   ask dst [set hidden? false]
   let route 0
   ask src [set route nw:weighted-path-to dst seg-length]
-  show route
+  if route != false [
+    foreach route [seg ->
+      ask seg [set color red]
+    ]
+  ]
 end
-
 @#$#@#$#@
 GRAPHICS-WINDOW
 205
 9
-773
+772
 447
 -1
 -1
