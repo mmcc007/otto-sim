@@ -21,7 +21,7 @@ to setup
   reset-ticks
 end
 
-; Loading polyline data into turtles connected by links
+; Loading network of polyline data into turtles connected by links
 to display-roads
   ask points [ die ]
   ; only one vector feature (I think)
@@ -40,24 +40,22 @@ to display-roads
         [
           let locationX item 0 location
           let locationY item 1 location
-          ; create segment if start and end points of segment are known
-          ifelse previous-point = nobody
+          ; find if a point already exists at this location
+          let existing-point one-of points with [xcor = locationX and ycor = locationY]
+          ifelse existing-point = nobody
           [
-            create-points 1
-            [ set xcor locationX
-              set ycor locationY
-              set hidden? true
-              set first-point self
-              set previous-point self
-            ]
-          ][
-            ; find if a point already exists at this location
-            let existing-point one-of points with [xcor = locationX and ycor = locationY]
-            ifelse not (existing-point = nobody)
+            ifelse first-point = nobody
             [
-              ask existing-point [create-segment-with previous-point [set seg-length link-length]]
-              set previous-point existing-point
+              ; start of segment
+              create-points 1
+              [ set xcor locationX
+                set ycor locationY
+                set hidden? true
+                set first-point self
+                set previous-point self
+              ]
             ][
+              ; end of segment
               create-points 1
               [ set xcor locationX
                 set ycor locationY
@@ -65,6 +63,17 @@ to display-roads
                 set hidden? true
                 set previous-point self
               ]
+            ]
+          ][
+            ifelse first-point = nobody
+            [
+              ; first point already exists so no need to create a point
+              set first-point existing-point
+              set previous-point existing-point
+            ][
+              ; connect segment end to existing point
+              ask existing-point [create-segment-with previous-point [set seg-length link-length]]
+              set previous-point existing-point
             ]
           ]
         ]
@@ -85,29 +94,6 @@ to calc-route
   show route
 end
 
-; Drawing polyline data from a shapefile, and optionally loading some
-; of the data into turtles, if label-rivers is true
-to display-rivers
-;  ask river-labels [ die ]
-  gis:set-drawing-color blue
-  gis:draw city-dataset 1
-;  if label-rivers
-;  [ foreach gis:feature-list-of rivers-dataset [ vector-feature ->
-;      let centroid gis:location-of gis:centroid-of vector-feature
-;      ; centroid will be an empty list if it lies outside the bounds
-;      ; of the current NetLogo world, as defined by our current GIS
-;      ; coordinate transformation
-;      if not empty? centroid
-;      [ create-river-labels 1
-;          [ set xcor item 0 centroid
-;            set ycor item 1 centroid
-;            set size 0
-;            set label gis:property-value vector-feature "NAME"
-;          ]
-;      ]
-;    ]
-;  ]
-end
 @#$#@#$#@
 GRAPHICS-WINDOW
 205
