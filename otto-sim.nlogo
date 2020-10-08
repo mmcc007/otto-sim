@@ -1,17 +1,29 @@
 extensions [ gis nw ]
 breed [ points point ]
+breed [cars car]
+cars-own [speed];mph
 undirected-link-breed [segments segment]
 segments-own [ seg-length ] ; used to find shortest route
-globals [ city-dataset ]
+globals [
+  city-dataset
+  route-car ; for moving along route
+  step-length ; miles
+]
 
 ; GIS file downloaded from https://www.santamonica.gov/isd/gis
 ; https://gis-smgov.opendata.arcgis.com/datasets/street-centerlines
 to setup
   clear-all
+  create-cars 1 [
+    set shape "car top"
+    set speed 20
+    set color white
+    set hidden? true
+  ]
+  set step-length .2
+  set route-car turtle 0
   let city "santa_monica"
   let project "Street_Centerlines"
-;  let city "ZC"
-;  let project "ZS"
   let path (word "data/" city "/" project)
   ; Note that setting the coordinate system here is optional, as
   ; long as all of your datasets use the same coordinate system.
@@ -20,11 +32,13 @@ to setup
   set city-dataset gis:load-dataset (word path ".shp")
   ; Set the world envelope to the union of all of our dataset's envelopes
   gis:set-world-envelope (gis:envelope-of city-dataset)
+  build-road-network
+
   reset-ticks
 end
 
-; Loading network of polyline data into turtles connected by links
-to display-roads
+; Load network of polyline data into points connected by segments
+to build-road-network
   ask points [ die ]
   ; only one vector feature (I think)
   foreach gis:feature-list-of city-dataset [ vector-feature ->
@@ -39,41 +53,34 @@ to display-roads
         ; bounds of the current NetLogo world, as defined by our
         ; current GIS coordinate transformation
         if not empty? location
-        [
-          let locationX item 0 location
-          let locationY item 1 location
+        [ let x item 0 location
+          let y item 1 location
           ; find if a point already exists at this location
-          let existing-point one-of points with [xcor = locationX and ycor = locationY]
+          let existing-point one-of points with [xcor = x and ycor = y]
           ifelse existing-point = nobody
-          [
-            ifelse first-point = nobody
-            [
-              ; start of polyline
+          [ ifelse first-point = nobody
+            [ ; start of polyline
               create-points 1
-              [ set xcor locationX
-                set ycor locationY
-                set hidden? true
+              [ set hidden? true
+                setxy x y
                 set first-point self
                 set previous-point self
               ]
-            ][
-              ; end of segment
+            ][ ; end of segment
               create-points 1
-              [ set xcor locationX
-                set ycor locationY
+              [ set hidden? true
+                setxy x y
                 create-segment-with previous-point [ set seg-length link-length ]
-                set hidden? true
                 set previous-point self
               ]
             ]
-          ][
-            ifelse first-point = nobody
+          ][ifelse first-point = nobody
             [
               ; first point already exists so no need to create a point
               set first-point existing-point
               set previous-point existing-point
             ][
-              ; connect segment end to existing point
+              ; connect previous segment end to existing point
               ask existing-point [create-segment-with previous-point [set seg-length link-length]]
               set previous-point existing-point
             ]
@@ -84,22 +91,148 @@ to display-roads
   ]
 end
 
-to calc-route
-  ; Note: still get some unroutable points. May need to smooth out data before import
+to show-route
   ; get two random points and calculate route
-  ask points [set hidden? true]
-  ask segments [set color 5]
+  ; Note: still get some unroutable points. May need to smooth out data before import
+  ask points with [hidden? = false] [set hidden? true]
+  ask segments with [color = red] [set color gray]
   let src one-of points
   let dst one-of other points
   ask src [set hidden? false]
   ask dst [set hidden? false]
-  let route 0
-  ask src [set route nw:weighted-path-to dst seg-length]
-  if route != false [
-    foreach route [seg ->
-      ask seg [set color red]
+  let route calc-route src dst
+  if route != false [display-route route red]
+end
+
+to traverse-route
+  let src one-of points
+  let dst one-of other points
+  show word src dst
+  drive-route src dst
+end
+
+to drive-route [src dst]
+  ask segments with [color = white or color = red] [set color gray]
+  ask route-car [set hidden? false]
+  let route calc-route src dst
+  ifelse route = false [stop][
+    display-route route red
+    let route-distance sum-route-distance route
+  ;    show route-distance
+    ; move a car a fixed distance along route
+    ; speed is in MPH
+    ; distance is in miles
+    let route-speed [speed] of route-car
+    ; tick is equivalent to distance/speed = .2/20 = 2/200 = 0.01 hours = 0.6 minutes = 36 seconds
+    let num-steps round(route-distance / step-length)
+    let duration route-distance / route-speed ; hours
+
+    show (word "distance:" route-distance " num steps:" num-steps " duration:" duration )
+    let remaining-steps num-steps
+    while [remaining-steps >= 0] [
+      let current-distance (num-steps - remaining-steps) * step-length
+      let current-segment find-segment route current-distance
+      ; check for overstep
+;      let carXY []
+;      let car-overstep overstep route-car step-length current-segment
+;      if car-overstep > 0 [
+;
+;      ]
+      ask current-segment [set color white]
+    ; find point on route to position car
+      let carXY point-at-distance-on-segment current-segment step-length
+      let x item 0 carXY
+      let y item 1 carXY
+      let end-point [end2] of current-segment
+      ask route-car [face end-point]
+;      let x [xcor] of end-point
+;      let y [ycor] of end-point
+      ask route-car [setxy x y]
+
+        set remaining-steps remaining-steps - 1
+  ;      let remaining-distance route-distance - num-steps * step-length
+  ;      let remaining-duration duration - remaining-distance / route-speed
+  ;      show (word "current-distance: " current-distance  " remaining-distance: " remaining-distance " remaining-duration: " remaining-duration)
+      show (word "current-distance: " current-distance )
+;      tick
+    ]
+;    ; when reached end of route, stop
+;    stop
+  ]
+end
+
+;to-report overstep [current-car step-len current-segment]
+;  let seg [crnt-seg] of current-car
+;  let seg-len [seg-length] of seg
+;  let seg-driven [seg-distance] of current-car
+;  let overstep = seg-driven + step-len - seg-len
+;  ifelse overstep > 0 [report overstep][report 0]
+;end
+
+; show links connected to center-point for link-distance
+to show-links [center-point link-distance]
+  let point-links [my-links] of center-point
+  ask point-links [
+    set color white
+    ; recursively show next level of links
+   if link-distance >= 0 [
+;      show-links end1 link-distance - 1
+      show-links end2 link-distance - 1
     ]
   ]
+end
+
+; returns a list of segments
+to-report calc-route [src dst]
+  let route []
+  ask src [set route nw:weighted-path-to dst seg-length]
+  report route
+end
+
+to-report sum-route-distance [route]
+;  report sum reduce [[segment-lengths next-segment] -> fput [seg-length] of next-segment segment-lengths] (fput [] route)
+;  report first reduce [[result-so-far next-item] -> fput ( first result-so-far + [seg-length] of next-item ) but-first result-so-far] (fput [0] route)
+  report sum map [seg -> [seg-length] of seg] route
+end
+
+to display-route [route route-color]
+  foreach route [seg ->
+    ask seg [set color route-color]
+  ]
+end
+
+; find segment at [dist] along [route]
+to-report find-segment [route dist]
+  let found-seg nobody
+  let current-dist 0
+  foreach route [seg ->
+    set found-seg seg
+    set current-dist current-dist + [seg-length] of seg
+    if current-dist > dist [report found-seg ]
+  ]
+  report found-seg
+end
+
+; get point at a distance along a segment
+to-report point-at-distance-on-segment [ seg dist ]
+  let seg-len [seg-length] of seg
+  let start-point [end1] of seg
+  let end-point [end2] of seg
+  let startx [xcor] of start-point
+  let starty [ycor] of start-point
+  let endx [xcor] of end-point
+  let endy [ycor] of end-point
+  let x startx + (endx - startx) * dist / seg-len
+  let y starty + (endy - starty) * dist / seg-len
+  report list x y
+end
+
+
+
+
+; show points with num connections (debug)
+to show-edge-points [num-links]
+  ask points [if count my-links = num-links [set hidden? false]]
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -147,12 +280,12 @@ NIL
 1
 
 BUTTON
-2
-220
-121
-254
+15
+85
+134
+119
 NIL
-calc-route
+show-route
 NIL
 1
 T
@@ -164,12 +297,12 @@ NIL
 1
 
 BUTTON
-15
-47
-105
-81
+17
+142
+140
+175
 NIL
-display-roads
+traverse-route
 NIL
 1
 T
@@ -272,6 +405,21 @@ Circle -16777216 true false 30 180 90
 Polygon -16777216 true false 162 80 132 78 134 135 209 135 194 105 189 96 180 89
 Circle -7500403 true true 47 195 58
 Circle -7500403 true true 195 195 58
+
+car top
+true
+15
+Polygon -1 true true 151 8 119 10 98 25 86 48 82 225 90 270 105 289 150 294 195 291 210 270 219 225 214 47 201 24 181 11
+Polygon -16777216 true false 210 195 195 210 195 135 210 105
+Polygon -16777216 true false 105 255 120 270 180 270 195 255 195 225 105 225
+Polygon -16777216 true false 90 195 105 210 105 135 90 105
+Polygon -1 true true 205 29 180 30 181 11
+Line -7500403 false 210 165 195 165
+Line -7500403 false 90 165 105 165
+Polygon -16777216 true false 121 135 180 134 204 97 182 89 153 85 120 89 98 97
+Line -16777216 false 210 90 195 30
+Line -16777216 false 90 90 105 30
+Polygon -1 true true 95 29 120 30 119 11
 
 circle
 false
