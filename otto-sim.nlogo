@@ -283,14 +283,6 @@ end
 ; helpers
 ;*********************************************************************************************
 
-;to-report distance-to-car [src] ; car reporter
-;  report distance-between src location
-;  let route-to-car calc-route src location
-;  ; some number larger than any possible other route distance in this world
-;  if route-to-car = false [report 1000000000]
-;  report route-distance route-to-car
-;end
-
 to-report distance-between [src dst]
   let route calc-route src dst
   ; some number larger than any possible other route distance in this world
@@ -302,13 +294,6 @@ end
 ; reports road point underlying x,y
 to-report road-pointxy-here [x y]
   report one-of points with [xcor = x and ycor = y] ; expect only none or one
-end
-
-; road point here?
-to-report road-point-here? [this-point]
-  let x [xcor] of this-point
-  let y [ycor] of this-point
-  report road-pointxy-here x y != nobody
 end
 
 to-report equal-points [p1 p2]
@@ -324,26 +309,6 @@ to-report in-car? [this-car]
   let carX [xcor] of this-car
   let carY [ycor] of this-car
   report xcor = carX and ycor = carY
-end
-
-to-report calc-route-rnd
-  let route false
-  while [route = false][
-    let src one-of points
-    let dst other-point src
-    show word src dst
-    set route calc-route src dst
-  ]
-  report route
-end
-
-to-report calc-route-rnd-src [dst]
-  let route false
-  while [route = false][
-    let src other-point dst
-    set route calc-route src dst
-  ]
-  report route
 end
 
 to-report calc-route-rnd-dst [src]
@@ -419,6 +384,43 @@ to show-links [center-point link-distance]
     ]
   ]
 end
+
+; unused
+
+;to-report distance-to-car [src] ; car reporter
+;  report distance-between src location
+;  let route-to-car calc-route src location
+;  ; some number larger than any possible other route distance in this world
+;  if route-to-car = false [report 1000000000]
+;  report route-distance route-to-car
+;end
+
+; road point here?
+;to-report road-point-here? [this-point]
+;  let x [xcor] of this-point
+;  let y [ycor] of this-point
+;  report road-pointxy-here x y != nobody
+;end
+
+;to-report calc-route-rnd
+;  let route false
+;  while [route = false][
+;    let src one-of points
+;    let dst other-point src
+;    show word src dst
+;    set route calc-route src dst
+;  ]
+;  report route
+;end
+
+;to-report calc-route-rnd-src [dst]
+;  let route false
+;  while [route = false][
+;    let src other-point dst
+;    set route calc-route src dst
+;  ]
+;  report route
+;end
 @#$#@#$#@
 GRAPHICS-WINDOW
 215
