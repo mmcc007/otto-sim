@@ -1,9 +1,20 @@
 extensions [ gis nw ]
 breed [ points point ]
 breed [cars car]
-cars-own [speed];mph
+cars-own [speed ; mph
+  available? location]
 undirected-link-breed [segments segment]
 segments-own [ seg-length ] ; used to find shortest route
+; customers, valets and carowners have a location that is initialized to a point
+breed [customers customer]
+breed [valets valet]
+breed [carowners carowner]
+customers-own [location wait-time payments]
+valets-own [available? delivery earnings location]
+carowners-own [owner-cars earnings location]
+undirected-link-breed [trips trip]
+trips-own [trip-route]
+
 globals [
   city-dataset
   route-car ; for moving along route
@@ -14,14 +25,11 @@ globals [
 ; https://gis-smgov.opendata.arcgis.com/datasets/street-centerlines
 to setup
   clear-all
-  create-cars 1 [
-    set shape "car top"
-    set speed 20
-    set color white
-    set hidden? true
-  ]
+
+  ask patches [set pcolor black + 2]
   set step-length .2
-  set route-car turtle 0
+
+  ; load map
   let city "santa_monica"
   let project "Street_Centerlines"
   let path (word "data/" city "/" project)
@@ -34,7 +42,118 @@ to setup
   gis:set-world-envelope (gis:envelope-of city-dataset)
   build-road-network
 
+  create-cars num-carowners [
+    set shape "car top"
+    set speed 20
+    set color grey
+    set location one-of points
+    setxy [xcor] of location [ycor] of location
+  ]
+  set route-car one-of cars ; for now
+  ask route-car [set color white]
+
+  create-valets num-valets [
+    set shape "flag"
+    set color grey
+    set location one-of points
+    setxy [xcor] of location [ycor] of location
+    set available? true
+    set earnings 0
+  ]
+  create-customers num-customers [
+    set shape "person"
+    set color black
+    set location one-of points
+    setxy [xcor] of location [ycor] of location
+    set hidden? true
+  ]
+
   reset-ticks
+end
+
+;*********************************************************************************************
+; go
+;*********************************************************************************************
+to go
+  ask customers [
+    ; randomly create a trip
+    if create-trip?
+    [ let nearest-car min-one-of cars [distance-between location [location] of myself]
+      ask nearest-car [set color white]
+      create-trip-with nearest-car [
+        set trip-route calc-route-rnd-dst [location] of myself
+        display-route trip-route red
+      ]
+      set color white
+      set hidden? false
+    ]
+    ; if trip created wait for car
+    if trip-created? and not customer-in-car? [set wait-time wait-time + 1]
+    ; if in car, take step to destination
+    if customer-in-car? [take-step-on-route]
+    ; if arrived at destination, pay and remove trip
+    if customer-arrived? [end-customer-trip]
+
+  ]
+
+  ask valets[
+    ; if delivery available, pick one otherwise wait
+    ; if on delivery either scooter to car, or drive to customer
+    ; if arrived at customer, complete delivery
+  ]
+
+  ask cars [
+    ; if route available, step towards destination, otherwise wait
+  ]
+
+  ask carowners [
+    ; if car unavailable, randomly make available
+    ; if car available, randomly make unavailable
+    ; if car active, randomly request return
+    ; if return requested, wait
+    ; if car returned, make unavailable
+  ]
+
+end
+;*********************************************************************************************
+
+;to-report customer-waiting-for-car?
+;  report not hidden? and count my-links > 0
+;end
+
+; condidition to create a trip randomly
+to-report create-trip?
+  report not trip-created? and random-float 1 > trip-frequency
+end
+
+; trip created
+to-report trip-created?
+  report  count my-links > 0
+end
+
+; customer in car
+to-report customer-in-car?
+  ifelse trip-created? [
+    let my-car [end2] of one-of my-trips
+    report trip-created? and in-car? my-car
+  ][report false]
+end
+
+to-report customer-arrived?
+  ; check if reached end-of-route
+  ifelse trip-created? [
+    let my-route [trip-route] of one-of my-trips
+    let dst [end2] of last my-route
+    report equal-points location dst
+  ][report false]
+end
+
+to end-customer-trip
+  ; cleanup and pay
+  ask my-trips [die]
+  set wait-time 0
+  set hidden? true
+  set payments payments + 1
 end
 
 ; Load network of polyline data into points connected by segments
@@ -48,14 +167,14 @@ to build-road-network
       let previous-point nobody
       foreach vertex [ latlng ->
         ; a location has 2 coordinates (x and y)
-        let location gis:location-of latlng
-        ; location will be an empty list if it lies outside the
+        let coord gis:location-of latlng
+        ; coord will be an empty list if it lies outside the
         ; bounds of the current NetLogo world, as defined by our
         ; current GIS coordinate transformation
-        if not empty? location
-        [ let x item 0 location
-          let y item 1 location
-          ; find if a point already exists at this location
+        if not empty? coord
+        [ let x item 0 coord
+          let y item 1 coord
+          ; find if a point already exists at this coord
           let existing-point one-of points with [xcor = x and ycor = y]
           ifelse existing-point = nobody
           [ ifelse first-point = nobody
@@ -97,18 +216,11 @@ to show-route
   ask points with [hidden? = false] [set hidden? true]
   ask segments with [color = red] [set color gray]
   let src one-of points
-  let dst one-of other points
+  let dst other-point src
   ask src [set hidden? false]
   ask dst [set hidden? false]
   let route calc-route src dst
   if route != false [display-route route red]
-end
-
-to traverse-route
-  let src one-of points
-  let dst one-of other points
-  show word src dst
-  drive-route src dst
 end
 
 to drive-route [src dst]
@@ -117,23 +229,24 @@ to drive-route [src dst]
   let route calc-route src dst
   ifelse route = false [stop][
     display-route route red
-    let route-distance sum-route-distance route
+    let rdistance route-distance route
   ;    show route-distance
     ; move a car a fixed distance along route
     ; speed is in MPH
     ; distance is in miles
     let route-speed [speed] of route-car
     ; tick is equivalent to distance/speed = .2/20 = 2/200 = 0.01 hours = 0.6 minutes = 36 seconds
-    let num-steps round(route-distance / step-length)
-    let duration route-distance / route-speed ; hours
+    let num-steps round(rdistance / step-length)
+    let duration rdistance / route-speed ; hours
 
-    show (word "distance:" route-distance " num steps:" num-steps " duration:" duration )
+    show (word "rdistance:" rdistance " num steps:" num-steps " duration:" duration )
     let remaining-steps num-steps
     while [remaining-steps >= 0] [
       let current-distance (num-steps - remaining-steps) * step-length
       let current-segment find-segment route current-distance
       ask current-segment [set color white]
-       ; find point on route to position car
+      ; find point on route to position car
+      ; TODO add route stepper to avoid overstep
       let carXY point-at-distance-on-segment current-segment step-length
       let x item 0 carXY
       let y item 1 carXY
@@ -147,21 +260,109 @@ to drive-route [src dst]
   ;      let remaining-distance route-distance - num-steps * step-length
   ;      let remaining-duration duration - remaining-distance / route-speed
   ;      show (word "current-distance: " current-distance  " remaining-distance: " remaining-distance " remaining-duration: " remaining-duration)
-      show (word "current-distance: " current-distance )
+;      show (word "current-distance: " current-distance )
+      ; TODO add tick to update analytics
     ]
   ]
 end
 
-; returns a list of segments
+; take a step to destination
+to take-step-on-route
+  ; TBD
+end
+
+; returns a list of segments or false if no route found
 to-report calc-route [src dst]
-  let route []
+  ; route will sometimes fail (maybe due to breaks in network)
+  let route false
   ask src [set route nw:weighted-path-to dst seg-length]
   report route
 end
 
-to-report sum-route-distance [route]
-;  report sum reduce [[segment-lengths next-segment] -> fput [seg-length] of next-segment segment-lengths] (fput [] route)
-;  report first reduce [[result-so-far next-item] -> fput ( first result-so-far + [seg-length] of next-item ) but-first result-so-far] (fput [0] route)
+;*********************************************************************************************
+; helpers
+;*********************************************************************************************
+
+;to-report distance-to-car [src] ; car reporter
+;  report distance-between src location
+;  let route-to-car calc-route src location
+;  ; some number larger than any possible other route distance in this world
+;  if route-to-car = false [report 1000000000]
+;  report route-distance route-to-car
+;end
+
+to-report distance-between [src dst]
+  let route calc-route src dst
+  ; some number larger than any possible other route distance in this world
+  ; (because some route calcs fail and this method is expected to be used to find a min)
+  if route = false [report 1000000000]
+  report route-distance route
+end
+
+; reports road point underlying x,y
+to-report road-pointxy-here [x y]
+  report one-of points with [xcor = x and ycor = y] ; expect only none or one
+end
+
+; road point here?
+to-report road-point-here? [this-point]
+  let x [xcor] of this-point
+  let y [ycor] of this-point
+  report road-pointxy-here x y != nobody
+end
+
+to-report equal-points [p1 p2]
+  let p1X [xcor] of p1
+  let p1Y [ycor] of p1
+  let p2X [xcor] of p2
+  let p2y [ycor] of p2
+  report p1X = p2Y and p1Y = p2Y
+end
+
+; report if car in same spot as this agent
+to-report in-car? [this-car]
+  let carX [xcor] of this-car
+  let carY [ycor] of this-car
+  report xcor = carX and ycor = carY
+end
+
+to-report calc-route-rnd
+  let route false
+  while [route = false][
+    let src one-of points
+    let dst other-point src
+    show word src dst
+    set route calc-route src dst
+  ]
+  report route
+end
+
+to-report calc-route-rnd-src [dst]
+  let route false
+  while [route = false][
+    let src other-point dst
+    set route calc-route src dst
+  ]
+  report route
+end
+
+to-report calc-route-rnd-dst [src]
+  let route false
+  while [route = false][
+    let dst other-point src
+    set route calc-route src dst
+  ]
+  report route
+end
+
+; guarantee a different point
+to-report other-point [src]
+  let dst one-of points
+  while [src = dst] [set dst one-of points]
+  report dst
+end
+
+to-report route-distance [route]
   report sum map [seg -> [seg-length] of seg] route
 end
 
@@ -197,14 +398,14 @@ to-report point-at-distance-on-segment [ seg dist ]
   report list x y
 end
 
-
-
+;*********************************************************************************************
+; debug
+;*********************************************************************************************
 
 ; show points with num connections (debug)
 to show-edge-points [num-links]
   ask points [if count my-links = num-links [set hidden? false]]
 end
-
 
 ; show links connected to center-point for link-distance (debug)
 to show-links [center-point link-distance]
@@ -220,10 +421,10 @@ to show-links [center-point link-distance]
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-205
-9
-772
-447
+215
+10
+1016
+630
 -1
 -1
 13.0
@@ -233,13 +434,13 @@ GRAPHICS-WINDOW
 1
 1
 0
+0
+0
 1
-1
-1
--21
-21
--16
-16
+-30
+30
+-23
+23
 0
 0
 1
@@ -247,10 +448,10 @@ ticks
 30.0
 
 BUTTON
-15
-10
-82
-44
+20
+230
+87
+264
 NIL
 setup
 NIL
@@ -264,10 +465,10 @@ NIL
 1
 
 BUTTON
-15
-85
-134
-119
+40
+365
+159
+399
 NIL
 show-route
 NIL
@@ -280,13 +481,58 @@ NIL
 NIL
 1
 
-BUTTON
-17
-142
-140
-175
+SLIDER
+10
+10
+182
+43
+num-carowners
+num-carowners
+0
+100
+10.0
+1
+1
 NIL
-traverse-route
+HORIZONTAL
+
+SLIDER
+10
+45
+182
+78
+num-valets
+num-valets
+0
+100
+10.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+10
+80
+182
+113
+num-customers
+num-customers
+0
+100
+10.0
+1
+1
+NIL
+HORIZONTAL
+
+BUTTON
+95
+230
+158
+263
+NIL
+go
 NIL
 1
 T
@@ -296,6 +542,31 @@ NIL
 NIL
 NIL
 1
+
+TEXTBOX
+800
+70
+1200
+95
+Santa Monica
+20
+7.0
+1
+
+SLIDER
+10
+115
+182
+148
+trip-frequency
+trip-frequency
+0
+1
+0.5
+0.1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -671,5 +942,5 @@ true
 Line -7500403 true 150 150 90 180
 Line -7500403 true 150 150 210 180
 @#$#@#$#@
-0
+1
 @#$#@#$#@
