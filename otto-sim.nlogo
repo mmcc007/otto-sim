@@ -132,14 +132,8 @@ to drive-route [src dst]
     while [remaining-steps >= 0] [
       let current-distance (num-steps - remaining-steps) * step-length
       let current-segment find-segment route current-distance
-      ; check for overstep
-;      let carXY []
-;      let car-overstep overstep route-car step-length current-segment
-;      if car-overstep > 0 [
-;
-;      ]
       ask current-segment [set color white]
-    ; find point on route to position car
+       ; find point on route to position car
       let carXY point-at-distance-on-segment current-segment step-length
       let x item 0 carXY
       let y item 1 carXY
@@ -154,30 +148,6 @@ to drive-route [src dst]
   ;      let remaining-duration duration - remaining-distance / route-speed
   ;      show (word "current-distance: " current-distance  " remaining-distance: " remaining-distance " remaining-duration: " remaining-duration)
       show (word "current-distance: " current-distance )
-;      tick
-    ]
-;    ; when reached end of route, stop
-;    stop
-  ]
-end
-
-;to-report overstep [current-car step-len current-segment]
-;  let seg [crnt-seg] of current-car
-;  let seg-len [seg-length] of seg
-;  let seg-driven [seg-distance] of current-car
-;  let overstep = seg-driven + step-len - seg-len
-;  ifelse overstep > 0 [report overstep][report 0]
-;end
-
-; show links connected to center-point for link-distance
-to show-links [center-point link-distance]
-  let point-links [my-links] of center-point
-  ask point-links [
-    set color white
-    ; recursively show next level of links
-   if link-distance >= 0 [
-;      show-links end1 link-distance - 1
-      show-links end2 link-distance - 1
     ]
   ]
 end
@@ -233,6 +203,20 @@ end
 ; show points with num connections (debug)
 to show-edge-points [num-links]
   ask points [if count my-links = num-links [set hidden? false]]
+end
+
+
+; show links connected to center-point for link-distance (debug)
+to show-links [center-point link-distance]
+  let point-links [my-links] of center-point
+  ask point-links [
+    set color white
+    ; recursively show next level of links
+   if link-distance >= 0 [
+;      show-links end1 link-distance - 1
+      show-links end2 link-distance - 1
+    ]
+  ]
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
