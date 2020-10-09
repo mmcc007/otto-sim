@@ -10,7 +10,7 @@ breed [customers customer]
 breed [valets valet]
 breed [carowners carowner]
 customers-own [location wait-time payments]
-valets-own [available? delivery earnings location wait-time]
+valets-own [available? delivery earnings location wait-time valet-step-num]
 carowners-own [owner-cars earnings location]
 undirected-link-breed [trips trip]
 trips-own [trip-route]
@@ -42,16 +42,6 @@ to setup
   gis:set-world-envelope (gis:envelope-of city-dataset)
   build-road-network
 
-  create-cars num-carowners [
-    set shape "car top"
-    set speed 20
-    set color grey
-    set location one-of points
-    setxy [xcor] of location [ycor] of location
-  ]
-  set route-car one-of cars ; for now
-  ask route-car [set color white]
-
   create-valets num-valets [
     set shape "flag"
     set color grey
@@ -67,6 +57,16 @@ to setup
     setxy [xcor] of location [ycor] of location
     set hidden? true
   ]
+  create-cars num-carowners [
+    set shape "car top"
+    set speed 20
+    set color grey
+    set location one-of points
+    setxy [xcor] of location [ycor] of location
+  ]
+  set route-car one-of cars ; for now
+  ask route-car [set color white]
+
 
   reset-ticks
 end
@@ -88,12 +88,15 @@ to go
   ]
 
   ask valets[
-    ; if deliveries available, deliver one otherwise wait
+    ; if deliveries available, pick one otherwise wait
     ifelse deliveries-available?
-    [ if deliver-car = false [ increment-wait 10 ] ]
+    [ if valet-picked-car? = false [ increment-wait 1 ] ]
     [ increment-wait 1 ]
-    ; if on delivery either scooter to car, or drive to customer
-    ; if arrived at customer, complete delivery
+    ; if in-delivery, either scooter to car, or drive to customer
+    if valet-on-scooter? [valet-step-to-car]
+;    if valet-in-car? [valet-step-to-customer]
+;    ; if arrived at customer, complete delivery
+;    if valet-arrived-at-customer? [complete-delivery]
   ]
 
   ask cars [
@@ -113,12 +116,111 @@ to go
 end
 ;*********************************************************************************************
 
+to-report valet-on-scooter?
+  report delivery-selected? and not valet-arrived-at-car?
+end
+
+to valet-step-to-car
+  let route [trip-route] of one-of my-links
+  let route-length route-distance route
+  let num-steps round(route-length / step-length)
+  if num-steps > valet-step-num [
+      take-step route valet-step-num
+  ]
+  set valet-step-num valet-step-num + 1
+end
+
+to-report valet-in-car?
+  report delivery-selected? and valet-arrived-at-car?
+end
+
+to valet-step-to-customer
+
+end
+
+; check that valet has an active delivery
+to-report delivery-selected?
+  report count my-links = 1
+end
+
+to-report valet-arrived-at-car?
+  let car-to-deliver [end2] of one-of my-links ; valet has one link
+  let car-location [location] of car-to-deliver
+  report distance-between location car-location = 0
+end
+
+to-report valet-arrived-at-customer?
+  let car-to-deliver [end2] of one-of my-links ; valet has one link
+  let car-location [location] of car-to-deliver
+  report distance-between location car-location = 0
+end
+
+to complete-delivery
+
+end
+
+to take-step [route step-num]
+  let current-distance step-num * step-length
+  let current-segment find-segment route current-distance
+  ; find point on route to position car
+  let next-pointXY point-at-distance-on-segment current-segment step-length
+  let x item 0 next-pointXY
+  let y item 1 next-pointXY
+  let end-point [end2] of current-segment
+  face end-point
+  setxy x y
+end
+
+to drive-route [src dst]
+  ask segments with [color = white or color = red] [set color gray]
+  ask route-car [set hidden? false]
+  let route calc-route src dst
+  ifelse route = false [stop][
+    display-route route red
+    let rdistance route-distance route
+    ; move a car a fixed distance along route
+    ; speed is in MPH
+    ; distance is in miles
+    let route-speed [speed] of route-car
+    ; tick is equivalent to distance/speed = .2/20 = 2/200 = 0.01 hours = 0.6 minutes = 36 seconds
+    let num-steps round(rdistance / step-length)
+    let duration rdistance / route-speed ; hours
+
+    show (word "rdistance:" rdistance " num steps:" num-steps " duration:" duration )
+    let remaining-steps num-steps
+    while [remaining-steps >= 0] [
+      let current-distance (num-steps - remaining-steps) * step-length
+      let current-segment find-segment route current-distance
+      ask current-segment [set color white]
+      ; find point on route to position car
+      ; TODO add route stepper to avoid overstep
+      let carXY point-at-distance-on-segment current-segment step-length
+      let x item 0 carXY
+      let y item 1 carXY
+      let end-point [end2] of current-segment
+      ask route-car [face end-point]
+;      let x [xcor] of end-point
+;      let y [ycor] of end-point
+      ask route-car [setxy x y]
+
+        set remaining-steps remaining-steps - 1
+  ;      let remaining-distance route-distance - num-steps * step-length
+  ;      let remaining-duration duration - remaining-distance / route-speed
+  ;      show (word "current-distance: " current-distance  " remaining-distance: " remaining-distance " remaining-duration: " remaining-duration)
+;      show (word "current-distance: " current-distance )
+      ; TODO add tick to update analytics
+    ]
+  ]
+end
+
 to-report deliveries-available?
   ; count cars with customer trips that have not been claimed by valets
   report count cars with [count my-links = 1] > 0
 end
 
-to-report deliver-car
+; should be valet-pick-car, but because some segments of road are not
+; connected, we have to do it this way until fixed
+to-report valet-picked-car?
   let nearest-car find-nearest-valet-car
   let route calc-route location [location] of nearest-car
   ifelse route = false
@@ -160,7 +262,7 @@ to-report customer-arrived?
   ifelse trip-created? [
     let my-route [trip-route] of one-of my-trips
     let dst [end2] of last my-route
-    report equal-points location dst
+    report equal-points? location dst
   ][report false]
 end
 
@@ -272,60 +374,7 @@ to build-road-network
   ]
 end
 
-to show-route
-  ; get two random points and calculate route
-  ; Note: still get some unroutable points. May need to smooth out data before import
-  ask points with [hidden? = false] [set hidden? true]
-  ask segments with [color = red] [set color gray]
-  let src one-of points
-  let dst other-point src
-  ask src [set hidden? false]
-  ask dst [set hidden? false]
-  let route calc-route src dst
-  if route != false [display-route route red]
-end
 
-to drive-route [src dst]
-  ask segments with [color = white or color = red] [set color gray]
-  ask route-car [set hidden? false]
-  let route calc-route src dst
-  ifelse route = false [stop][
-    display-route route red
-    let rdistance route-distance route
-    ; move a car a fixed distance along route
-    ; speed is in MPH
-    ; distance is in miles
-    let route-speed [speed] of route-car
-    ; tick is equivalent to distance/speed = .2/20 = 2/200 = 0.01 hours = 0.6 minutes = 36 seconds
-    let num-steps round(rdistance / step-length)
-    let duration rdistance / route-speed ; hours
-
-    show (word "rdistance:" rdistance " num steps:" num-steps " duration:" duration )
-    let remaining-steps num-steps
-    while [remaining-steps >= 0] [
-      let current-distance (num-steps - remaining-steps) * step-length
-      let current-segment find-segment route current-distance
-      ask current-segment [set color white]
-      ; find point on route to position car
-      ; TODO add route stepper to avoid overstep
-      let carXY point-at-distance-on-segment current-segment step-length
-      let x item 0 carXY
-      let y item 1 carXY
-      let end-point [end2] of current-segment
-      ask route-car [face end-point]
-;      let x [xcor] of end-point
-;      let y [ycor] of end-point
-      ask route-car [setxy x y]
-
-        set remaining-steps remaining-steps - 1
-  ;      let remaining-distance route-distance - num-steps * step-length
-  ;      let remaining-duration duration - remaining-distance / route-speed
-  ;      show (word "current-distance: " current-distance  " remaining-distance: " remaining-distance " remaining-duration: " remaining-duration)
-;      show (word "current-distance: " current-distance )
-      ; TODO add tick to update analytics
-    ]
-  ]
-end
 
 ; take a step to destination
 to take-step-on-route
@@ -357,7 +406,7 @@ to-report road-pointxy-here [x y]
   report one-of points with [xcor = x and ycor = y] ; expect only none or one
 end
 
-to-report equal-points [p1 p2]
+to-report equal-points? [p1 p2]
   let p1X [xcor] of p1
   let p1Y [ycor] of p1
   let p2X [xcor] of p2
@@ -429,6 +478,19 @@ end
 ;*********************************************************************************************
 ; debug
 ;*********************************************************************************************
+
+to show-route
+  ; get two random points and calculate route
+  ; Note: still get some unroutable points. May need to smooth out data before import
+  ask points with [hidden? = false] [set hidden? true]
+  ask segments with [color = red] [set color gray]
+  let src one-of points
+  let dst other-point src
+  ask src [set hidden? false]
+  ask dst [set hidden? false]
+  let route calc-route src dst
+  if route != false [display-route route red]
+end
 
 ; show points with num connections (debug)
 to show-edge-points [num-links]
@@ -555,7 +617,7 @@ num-carowners
 num-carowners
 0
 100
-10.0
+1.0
 1
 1
 NIL
@@ -570,7 +632,7 @@ num-valets
 num-valets
 0
 100
-5.0
+1.0
 1
 1
 NIL
@@ -585,7 +647,7 @@ num-customers
 num-customers
 0
 100
-10.0
+1.0
 1
 1
 NIL
@@ -627,7 +689,7 @@ trip-frequency
 trip-frequency
 0
 1
-0.5
+1.0
 0.1
 1
 NIL
@@ -651,6 +713,23 @@ true
 PENS
 "C" 1.0 0 -16777216 true "" "plot mean [wait-time] of customers"
 "V" 1.0 0 -1184463 true "" "plot mean [wait-time] of valets"
+
+BUTTON
+70
+300
+133
+333
+Step
+go
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
 
 @#$#@#$#@
 ## WHAT IS IT?
