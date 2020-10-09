@@ -10,7 +10,7 @@ breed [customers customer]
 breed [valets valet]
 breed [carowners carowner]
 customers-own [location wait-time payments]
-valets-own [available? delivery earnings location]
+valets-own [available? delivery earnings location wait-time]
 carowners-own [owner-cars earnings location]
 undirected-link-breed [trips trip]
 trips-own [trip-route]
@@ -78,26 +78,20 @@ to go
   ask customers [
     ; randomly create a trip
     if create-trip?
-    [ let nearest-car min-one-of cars [distance-between location [location] of myself]
-      ask nearest-car [set color white]
-      create-trip-with nearest-car [
-        set trip-route calc-route-rnd-dst [location] of myself
-        display-route trip-route red
-      ]
-      set color white
-      set hidden? false
-    ]
-    ; if trip created wait for car
-    if trip-created? and not customer-in-car? [set wait-time wait-time + 1]
+    [if create-trip = false [increment-wait 10]] ; estimated time penalty for no cars available
+    ; if trip created and not delivered, wait for car
+    if waiting-for-car? [increment-wait 1]
     ; if in car, take step to destination
     if customer-in-car? [take-step-on-route]
     ; if arrived at destination, pay and remove trip
     if customer-arrived? [end-customer-trip]
-
   ]
 
   ask valets[
-    ; if delivery available, pick one otherwise wait
+    ; if deliveries available, deliver one otherwise wait
+    ifelse deliveries-available?
+    [ if deliver-car = false [ increment-wait 10 ] ]
+    [ increment-wait 1 ]
     ; if on delivery either scooter to car, or drive to customer
     ; if arrived at customer, complete delivery
   ]
@@ -114,16 +108,33 @@ to go
     ; if car returned, make unavailable
   ]
 
+  tick
+
 end
 ;*********************************************************************************************
 
-;to-report customer-waiting-for-car?
-;  report not hidden? and count my-links > 0
-;end
+to-report deliveries-available?
+  ; count cars with customer trips that have not been claimed by valets
+  report count cars with [count my-links = 1] > 0
+end
+
+to-report deliver-car
+  let nearest-car find-nearest-valet-car
+  let route calc-route location [location] of nearest-car
+  ifelse route = false
+  [ report false]
+  [ create-trip-with nearest-car
+    [ set trip-route route
+      display-route trip-route yellow
+    ]
+    set color yellow
+    report true
+  ]
+end
 
 ; condidition to create a trip randomly
 to-report create-trip?
-  report not trip-created? and random-float 1 > trip-frequency
+  report not trip-created? and ticks mod 20 = 0 and random-float 1 <= trip-frequency
 end
 
 ; trip created
@@ -131,11 +142,16 @@ to-report trip-created?
   report  count my-links > 0
 end
 
+; waiting for car
+to-report waiting-for-car?
+  report trip-created? and not customer-in-car?
+end
+
 ; customer in car
 to-report customer-in-car?
   ifelse trip-created? [
     let my-car [end2] of one-of my-trips
-    report trip-created? and in-car? my-car
+    report not in-car? my-car
   ][report false]
 end
 
@@ -146,6 +162,52 @@ to-report customer-arrived?
     let dst [end2] of last my-route
     report equal-points location dst
   ][report false]
+end
+
+; may not correspond to actual time
+to increment-wait [time]
+  set wait-time wait-time + time
+end
+
+to-report create-trip
+  let nearest-car find-nearest-customer-car
+  ifelse nearest-car = false
+  [ report false]
+  [ ask nearest-car [set color white]
+    create-trip-with nearest-car
+    [ set trip-route calc-route-with-rnd-dst [location] of myself
+      display-route trip-route red
+    ]
+    set color white
+    set hidden? false
+    report true
+  ]
+end
+
+to-report find-nearest-customer-car
+  ; sometimes there is no route to nearest car, so go on to next closest car in the hope that
+  ; some cars will not be isolated (until problem found)
+  let available-cars filter-cars-by-link-count sort-cars-by-increasing-distance 0
+  ifelse empty? available-cars [report false][report first available-cars]
+;  report min-one-of cars [distance-between location [location] of myself] may restore this when problem solved
+end
+
+to-report find-nearest-valet-car
+  let available-cars filter-cars-by-link-count sort-cars-by-increasing-distance 1
+  ifelse empty? available-cars [report false][report first available-cars]
+end
+
+; link-count means 0: available, 1: customer selected, 2: valet selected
+; used to prevent a car from getting selected by more than one customer and valet (and in the right order)
+to-report filter-cars-by-link-count [unfiltered-cars link-count]
+  report filter [ unfiltered-car -> (count [my-links] of unfiltered-car) = link-count ] unfiltered-cars
+end
+
+to-report sort-cars-by-increasing-distance
+  report sort-by [ [car1 car2] ->
+    distance-between location [location] of car1 <
+    distance-between location [location] of car2
+  ] [self] of cars
 end
 
 to end-customer-trip
@@ -230,7 +292,6 @@ to drive-route [src dst]
   ifelse route = false [stop][
     display-route route red
     let rdistance route-distance route
-  ;    show route-distance
     ; move a car a fixed distance along route
     ; speed is in MPH
     ; distance is in miles
@@ -311,7 +372,7 @@ to-report in-car? [this-car]
   report xcor = carX and ycor = carY
 end
 
-to-report calc-route-rnd-dst [src]
+to-report calc-route-with-rnd-dst [src]
   let route false
   while [route = false][
     let dst other-point src
@@ -332,9 +393,11 @@ to-report route-distance [route]
 end
 
 to display-route [route route-color]
-  foreach route [seg ->
-    ask seg [set color route-color]
-  ]
+  foreach route [seg -> ask seg [set color route-color]]
+end
+
+to hide-route [route]
+  foreach route [seg -> ask seg [set color grey]]
 end
 
 ; find segment at [dist] along [route]
@@ -450,11 +513,11 @@ ticks
 30.0
 
 BUTTON
-20
+25
 230
-87
-264
-NIL
+92
+263
+Setup
 setup
 NIL
 1
@@ -484,10 +547,10 @@ NIL
 1
 
 SLIDER
-10
-10
-182
-43
+15
+115
+187
+148
 num-carowners
 num-carowners
 0
@@ -499,25 +562,25 @@ NIL
 HORIZONTAL
 
 SLIDER
-10
-45
-182
-78
-num-valets
-num-valets
-0
-100
-10.0
-1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-10
+15
 80
-182
+187
 113
+num-valets
+num-valets
+0
+100
+5.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+15
+10
+187
+43
 num-customers
 num-customers
 0
@@ -529,13 +592,13 @@ NIL
 HORIZONTAL
 
 BUTTON
-95
+100
 230
-158
+165
 263
-NIL
+Go
 go
-NIL
+T
 1
 T
 OBSERVER
@@ -546,20 +609,20 @@ NIL
 1
 
 TEXTBOX
-800
-70
-1200
-95
-Santa Monica
+795
+75
+1195
+100
+Santa Monica, CA
 20
 7.0
 1
 
 SLIDER
-10
-115
-182
-148
+15
+45
+187
+78
 trip-frequency
 trip-frequency
 0
@@ -569,6 +632,25 @@ trip-frequency
 1
 NIL
 HORIZONTAL
+
+PLOT
+1085
+85
+1285
+235
+Average Wait Time
+Time
+Wait Time
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"C" 1.0 0 -16777216 true "" "plot mean [wait-time] of customers"
+"V" 1.0 0 -1184463 true "" "plot mean [wait-time] of valets"
 
 @#$#@#$#@
 ## WHAT IS IT?
