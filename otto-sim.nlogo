@@ -21,15 +21,25 @@ globals [
   step-length ; miles
 ]
 
-; GIS file downloaded from https://www.santamonica.gov/isd/gis
-; https://gis-smgov.opendata.arcgis.com/datasets/street-centerlines
-to setup
+; called at model load
+to startup
+  init-model
+end
+
+to init-model
+  no-display
   clear-all
-
   ask patches [set pcolor black + 2]
-  set step-length .2
+  load-map
+  build-road-network
+  display
+end
 
-  ; load map
+to load-map
+  ; GIS file downloaded from https://www.santamonica.gov/isd/gis
+  ; https://gis-smgov.opendata.arcgis.com/datasets/street-centerlines
+  ; Map must consist of one layer containing a list of one or more intersecting polylines
+  ; with or without metadata.
   let city "santa_monica"
   let project "Street_Centerlines"
   let path (word "data/" city "/" project)
@@ -40,8 +50,30 @@ to setup
   set city-dataset gis:load-dataset (word path ".shp")
   ; Set the world envelope to the union of all of our dataset's envelopes
   gis:set-world-envelope (gis:envelope-of city-dataset)
-  build-road-network
+end
 
+to clear-setup
+  clear-globals
+  clear-ticks
+;  clear-turtles
+  ask valets [die]
+  ask customers [die]
+  ask cars [die]
+  ask trips [die]
+;  clear-patches
+;  clear-links
+  ask points with [hidden? = false] [
+  set hidden? true
+  set color grey]
+  ask segments [set color grey]
+  clear-drawing
+  clear-all-plots
+  clear-output
+end
+
+to setup
+  clear-setup
+  set step-length .2
   create-valets num-valets [
     set shape "flag"
     set color grey
@@ -57,6 +89,7 @@ to setup
     setxy [xcor] of location [ycor] of location
     set hidden? true
   ]
+  ; create cars last to use end2 for direction (until adopt directional links)
   create-cars num-carowners [
     set shape "car top"
     set speed 20
@@ -64,9 +97,8 @@ to setup
     set location one-of points
     setxy [xcor] of location [ycor] of location
   ]
-  set route-car one-of cars ; for now
-  ask route-car [set color white]
-
+;  set route-car one-of cars ; for now
+;  ask route-car [set color white]
 
   reset-ticks
 end
@@ -74,6 +106,7 @@ end
 ;*********************************************************************************************
 ; go
 ;*********************************************************************************************
+
 to go
   ask customers [
     ; randomly create a trip
@@ -218,8 +251,8 @@ to-report deliveries-available?
   report count cars with [count my-links = 1] > 0
 end
 
-; should be valet-pick-car, but because some segments of road are not
-; connected, we have to do it this way until fixed
+; should be valet-pick-car, but because some segments of road are not connected,
+; we have to do it this way until fixed
 to-report valet-picked-car?
   let nearest-car find-nearest-valet-car
   let route calc-route location [location] of nearest-car
@@ -227,6 +260,7 @@ to-report valet-picked-car?
   [ report false]
   [ create-trip-with nearest-car
     [ set trip-route route
+      set shape "trip"
       display-route trip-route yellow
     ]
     set color yellow
@@ -235,6 +269,7 @@ to-report valet-picked-car?
 end
 
 ; condidition to create a trip randomly
+; may expand to simulate a demand curve
 to-report create-trip?
   report not trip-created? and ticks mod 20 = 0 and random-float 1 <= trip-frequency
 end
@@ -278,6 +313,7 @@ to-report create-trip
   [ ask nearest-car [set color white]
     create-trip-with nearest-car
     [ set trip-route calc-route-with-rnd-dst [location] of myself
+      set shape "trip"
       display-route trip-route red
     ]
     set color white
@@ -320,7 +356,9 @@ to end-customer-trip
   set payments payments + 1
 end
 
-; Load network of polyline data into points connected by segments
+; Load network of GIS polyline data into points connected by segments
+; A segment is used to link points along a polyline
+; A single point is used where one or more polylines intersect
 to build-road-network
   ask points [ die ]
   ; only one vector feature (I think)
@@ -389,6 +427,39 @@ to-report calc-route [src dst]
   report route
 end
 
+; generate a list of points along a route from points [src] to [dst]
+; if no route founds returns the empty list
+; this is useful because segments have implicit direction and may not be in the correct order
+; plus it makes it easier to step along the route using points instead of segments
+; and in other operations on routes
+to-report calc-route-points [src dst]
+  let route false
+  ask src [set route nw:turtles-on-weighted-path-to dst seg-length]
+  ifelse route = false
+  [report []]
+  [report route]
+;  ifelse route = false [report []]
+;  [
+;    ; extract the route's points from the segments
+;    let route-points []
+;    let previous-point src
+;    foreach route [seg ->
+;      ; find which end of segment comes next
+;      let seg-start [end1] of seg
+;      let seg-end [end2] of seg
+;      ifelse seg-start = previous-point
+;      [ set route-points lput seg-start route-points
+;        set previous-point seg-start
+;      ]
+;      [ set route-points lput seg-end route-points
+;        set previous-point seg-end
+;      ]
+;    ]
+;    set route-points lput dst route-points
+;    report route-points
+;  ]
+end
+
 ;*********************************************************************************************
 ; helpers
 ;*********************************************************************************************
@@ -442,6 +513,16 @@ to-report route-distance [route]
 end
 
 to display-route [route route-color]
+  let src [end1] of first route
+  let dst [end2] of last route
+  ask src [
+  set hidden? false
+  set shape "circle 3"
+  set color red]
+ask dst [
+  set hidden? false
+  set shape "square 3"
+  set color red]
   foreach route [seg -> ask seg [set color route-color]]
 end
 
@@ -449,14 +530,14 @@ to hide-route [route]
   foreach route [seg -> ask seg [set color grey]]
 end
 
-; find segment at [dist] along [route]
-to-report find-segment [route dist]
+; find segment at [distance-along] [route]
+to-report find-segment [route distance-along]
   let found-seg nobody
-  let current-dist 0
+  let current-distance 0
   foreach route [seg ->
     set found-seg seg
-    set current-dist current-dist + [seg-length] of seg
-    if current-dist > dist [report found-seg ]
+    set current-distance current-distance + [seg-length] of seg
+    if current-distance > distance-along [report found-seg ]
   ]
   report found-seg
 end
@@ -482,14 +563,63 @@ end
 to show-route
   ; get two random points and calculate route
   ; Note: still get some unroutable points. May need to smooth out data before import
-  ask points with [hidden? = false] [set hidden? true]
+  ask points with [hidden? = false] [
+    set hidden? true
+    set color grey]
   ask segments with [color = red] [set color gray]
   let src one-of points
   let dst other-point src
-  ask src [set hidden? false]
-  ask dst [set hidden? false]
   let route calc-route src dst
   if route != false [display-route route red]
+end
+
+to show-route-using-points
+    ask points with [hidden? = false] [
+    set hidden? true
+    set color grey]
+  ask segments with [color = red] [set color gray]
+  let src one-of points
+  let dst other-point src
+  let route calc-route-points src dst
+  display-route-by-points route red
+end
+
+; find segments at [route-point]
+to-report find-segments-at-point [route-point]
+  report [my-segments] of route-point
+end
+
+; find the set of segments intersecting route
+to-report find-segments-intersecting-route [candidate-segments route]
+  ; find segments where both ends are on route
+  let intersecting-segments []
+  ask candidate-segments [
+    if member? end1 route and member? end2 route
+    [set intersecting-segments fput self intersecting-segments]
+  ]
+  report links with [member? self intersecting-segments]
+end
+
+to display-route-by-points [route route-color]
+  if not empty? route [
+    let src first route
+    let dst last route
+    ask src [
+      set hidden? false
+      set shape "circle 3"
+      set color red]
+    ask dst [
+      set hidden? false
+      set shape "square 3"
+      set color red]
+    foreach route [route-point ->
+      ; find segments at point of route
+      let segs find-segments-at-point route-point
+      ; find which segmens are on route
+      let intersecting-segs find-segments-intersecting-route segs route
+      ask intersecting-segs [set color route-color]
+    ]
+  ]
 end
 
 ; show points with num connections (debug)
@@ -575,10 +705,10 @@ ticks
 30.0
 
 BUTTON
-25
-230
-92
-263
+35
+160
+95
+193
 Setup
 setup
 NIL
@@ -655,9 +785,9 @@ HORIZONTAL
 
 BUTTON
 100
-230
+160
 165
-263
+193
 Go
 go
 T
@@ -721,6 +851,23 @@ BUTTON
 333
 Step
 go
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+10
+405
+202
+438
+NIL
+show-route-using-points
 NIL
 1
 T
@@ -849,6 +996,11 @@ false
 0
 Circle -7500403 true true 0 0 300
 Circle -16777216 true false 30 30 240
+
+circle 3
+false
+0
+Circle -1 false false 90 90 118
 
 cow
 false
@@ -1002,6 +1154,11 @@ false
 Rectangle -7500403 true true 30 30 270 270
 Rectangle -16777216 true false 60 60 240 240
 
+square 3
+false
+0
+Rectangle -1 false false 90 90 210 210
+
 star
 false
 0
@@ -1096,6 +1253,17 @@ NetLogo 6.1.1
 @#$#@#$#@
 default
 0.0
+-0.2 0 0.0 1.0
+0.0 1 1.0 0.0
+0.2 0 0.0 1.0
+link direction
+true
+0
+Line -7500403 true 150 150 90 180
+Line -7500403 true 150 150 210 180
+
+trip
+10.0
 -0.2 0 0.0 1.0
 0.0 1 1.0 0.0
 0.2 0 0.0 1.0
