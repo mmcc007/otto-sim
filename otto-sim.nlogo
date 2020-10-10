@@ -48,6 +48,7 @@ to load-map
   ; https://gis-smgov.opendata.arcgis.com/datasets/street-centerlines
   ; Map must consist of one layer containing a list of one or more intersecting polylines
   ; with or without metadata.
+  ; used https://mapshaper.org/ console to 'clean' and 'dissolve'. Also use simplify feature.
   let city "santa_monica"
   let project "Street_Centerlines"
   let path (word "data/" city "/" project)
@@ -315,25 +316,34 @@ end
 ; also creates trip from car to customer
 to-report create-trip
   let nearest-car find-nearest-customer-car
-  ifelse nearest-car = false
-  [ report false]
-  [ ask nearest-car [set color white]
-    create-trip-with nearest-car
-    [ set trip-route calc-route-with-rnd-dst [location] of myself
-      set shape "trip"
-      display-route trip-route red
-    ]
-    set color white
-    set hidden? false
-    report true
+  if nearest-car = false [report false]
+  ; should not create trip if there is no route to car
+  let route-to-car calc-route location [location] of nearest-car
+  if route-to-car = false [report false]
+
+  ; create trip to random destination (route is guaranteed not to fail)
+  let random-route calc-route-with-rnd-dst location
+  let random-dst [end1] of last random-route ; TODO: convert route to list of points
+
+  create-trip-with nearest-car
+  [ set trip-route route-to-car
+    set shape "trip"
+    display-route trip-route yellow
   ]
+  set color red
+  set hidden? false
+
+  ask nearest-car [set color yellow]
+  report true
+
 end
 
+; find nearest customer car or return nobody
 to-report find-nearest-customer-car
   ; sometimes there is no route to nearest car, so go on to next closest car in the hope that
   ; some cars will not be isolated (until problem found)
   let available-cars filter-cars-by-link-count sort-cars-by-increasing-distance 0
-  ifelse empty? available-cars [report false][report first available-cars]
+  ifelse empty? available-cars [report nobody][report first available-cars]
 ;  report min-one-of cars [distance-between location [location] of myself] may restore this when problem solved
 end
 
@@ -393,6 +403,8 @@ to build-road-network
                 setxy x y
                 set first-point self
                 set previous-point self
+                set shape "circle 3"
+                set color grey
               ]
             ][ ; end of segment
               create-points 1
@@ -400,9 +412,15 @@ to build-road-network
                 setxy x y
                 create-segment-with previous-point [ set seg-length link-length ]
                 set previous-point self
+                set shape "circle 3"
+                set color grey
               ]
             ]
-          ][ifelse first-point = nobody
+          ][
+            ; existing point found so this is an intersection
+            ask existing-point [set shape "square 3"]
+
+            ifelse first-point = nobody
             [
               ; first point already exists so no need to create a point
               set first-point existing-point
@@ -442,9 +460,10 @@ end
 to-report calc-route-points [src dst]
   let route false
   ask src [set route nw:turtles-on-weighted-path-to dst seg-length]
-  ifelse route = false
-  [report []]
-  [report route]
+;  ifelse route = false
+;  [report []]
+;  [report route]
+  report route
 ;  ifelse route = false [report []]
 ;  [
 ;    ; extract the route's points from the segments
@@ -499,6 +518,8 @@ to-report in-car? [this-car]
   report xcor = carX and ycor = carY
 end
 
+; find a random route
+; (guaranteed not to fail)
 to-report calc-route-with-rnd-dst [src]
   let route false
   while [route = false][
@@ -614,15 +635,15 @@ to display-route-by-points [route route-color]
     ask src [
       set hidden? false
       set shape "circle 3"
-      set color red]
+      set color route-color]
     ask dst [
       set hidden? false
       set shape "square 3"
-      set color red]
+      set color route-color]
     foreach route [route-point ->
       ; find segments at point of route
       let segs find-segments-at-point route-point
-      ; find which segmens are on route
+      ; find which segments are on route
       let intersecting-segs find-segments-intersecting-route segs route
       ask intersecting-segs [set color route-color]
     ]
@@ -645,6 +666,33 @@ to show-links [center-point link-distance]
       show-links end2 link-distance - 1
     ]
   ]
+end
+
+to show-points-with-no-route
+  build-road-network
+  ; for random point find route to every other point
+  let points-with-no-route []
+  ask one-of points [
+    set hidden? false
+    ask points [
+      if self != myself [
+        let src myself
+        let dst self
+        let route calc-route-points src dst
+        ifelse route = false or empty? route
+        [ set points-with-no-route lput dst points-with-no-route
+;          set hidden? false
+;          ifelse route = false [set color red][set color green]
+        ][
+          display-route-by-points route black + 2
+        ]
+
+      ]
+    ]
+;    display
+  ]
+  foreach points-with-no-route [ bad-point -> ask bad-point[ set hidden? false set color red]]
+  print "show-points-with-no-route: done"
 end
 
 ; unused
@@ -1023,8 +1071,8 @@ Circle -16777216 true false 30 30 240
 
 circle 3
 false
-0
-Circle -1 false false 90 90 118
+15
+Circle -1 false true 90 90 118
 
 cow
 false
@@ -1180,8 +1228,8 @@ Rectangle -16777216 true false 60 60 240 240
 
 square 3
 false
-0
-Rectangle -1 false false 90 90 210 210
+15
+Rectangle -1 false true 90 90 210 210
 
 star
 false
