@@ -1,10 +1,18 @@
 extensions [ gis nw ]
+
+; road map is a netork of points linked by segments
+; patches are not used
 breed [ points point ]
+undirected-link-breed [segments segment]
+segments-own [
+  seg-length ; Used by nw extension to find shortest route thru points on the road network.
+]
+
+; cars travel along the road network
 breed [cars car]
 cars-own [speed ; mph
   available? location]
-undirected-link-breed [segments segment]
-segments-own [ seg-length ] ; used to find shortest route
+
 ; customers, valets and carowners have a location that is initialized to a point
 breed [customers customer]
 breed [valets valet]
@@ -27,12 +35,12 @@ to startup
 end
 
 to init-model
-  no-display
+;  no-display
   clear-all
   ask patches [set pcolor black + 2]
   load-map
   build-road-network
-  display
+;  display
 end
 
 to load-map
@@ -62,10 +70,10 @@ to clear-setup
   ask trips [die]
 ;  clear-patches
 ;  clear-links
-  ask points with [hidden? = false] [
-  set hidden? true
-  set color grey]
-  ask segments [set color grey]
+  ask points with [hidden? = false and color != grey] [
+    set hidden? true
+    set color grey]
+  ask segments with [color != grey] [set color grey]
   clear-drawing
   clear-all-plots
   clear-output
@@ -75,7 +83,7 @@ to setup
   clear-setup
   set step-length .2
   create-valets num-valets [
-    set shape "flag"
+    set shape "person"
     set color grey
     set location one-of points
     setxy [xcor] of location [ycor] of location
@@ -89,7 +97,6 @@ to setup
     setxy [xcor] of location [ycor] of location
     set hidden? true
   ]
-  ; create cars last to use end2 for direction (until adopt directional links)
   create-cars num-carowners [
     set shape "car top"
     set speed 20
@@ -97,8 +104,6 @@ to setup
     set location one-of points
     setxy [xcor] of location [ycor] of location
   ]
-;  set route-car one-of cars ; for now
-;  ask route-car [set color white]
 
   reset-ticks
 end
@@ -306,6 +311,8 @@ to increment-wait [time]
   set wait-time wait-time + time
 end
 
+; create customer trip
+; also creates trip from car to customer
 to-report create-trip
   let nearest-car find-nearest-customer-car
   ifelse nearest-car = false
@@ -705,9 +712,9 @@ ticks
 30.0
 
 BUTTON
-35
+15
 160
-95
+70
 193
 Setup
 setup
@@ -784,9 +791,9 @@ NIL
 HORIZONTAL
 
 BUTTON
-100
+145
 160
-165
+210
 193
 Go
 go
@@ -845,10 +852,10 @@ PENS
 "V" 1.0 0 -1184463 true "" "plot mean [wait-time] of valets"
 
 BUTTON
-70
-300
-133
-333
+75
+160
+138
+193
 Step
 go
 NIL
@@ -868,6 +875,23 @@ BUTTON
 438
 NIL
 show-route-using-points
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+15
+195
+70
+228
+Restart
+init-model
 NIL
 1
 T
