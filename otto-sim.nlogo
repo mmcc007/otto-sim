@@ -20,7 +20,7 @@ breed [carowners carowner]
 customers-own [location wait-time payments]
 valets-own [available? delivery earnings location wait-time valet-step-num]
 carowners-own [owner-cars earnings location]
-undirected-link-breed [trips trip]
+directed-link-breed [trips trip]
 trips-own [trip-route]
 
 globals [
@@ -161,7 +161,7 @@ end
 
 to valet-step-to-car
   let route [trip-route] of one-of my-links
-  let route-length route-distance route
+  let route-length route-distance-by-point route
   let num-steps round(route-length / step-length)
   if num-steps > valet-step-num [
       take-step route valet-step-num
@@ -198,14 +198,15 @@ to complete-delivery
 
 end
 
+; TODO handle overstep
 to take-step [route step-num]
   let current-distance step-num * step-length
-  let current-segment find-segment route current-distance
+  let current-segment find-segment-on-route route current-distance
   ; find point on route to position car
   let next-pointXY point-at-distance-on-segment current-segment step-length
   let x item 0 next-pointXY
   let y item 1 next-pointXY
-  let end-point [end2] of current-segment
+  let end-point first [end2] of current-segment
   face end-point
   setxy x y
 end
@@ -213,10 +214,10 @@ end
 to drive-route [src dst]
   ask segments with [color = white or color = red] [set color gray]
   ask route-car [set hidden? false]
-  let route calc-route src dst
+  let route calc-route-points src dst
   ifelse route = false [stop][
-    display-route route red
-    let rdistance route-distance route
+    display-route-by-point route red
+    let rdistance route-distance-by-point route
     ; move a car a fixed distance along route
     ; speed is in MPH
     ; distance is in miles
@@ -229,7 +230,7 @@ to drive-route [src dst]
     let remaining-steps num-steps
     while [remaining-steps >= 0] [
       let current-distance (num-steps - remaining-steps) * step-length
-      let current-segment find-segment route current-distance
+      let current-segment find-segment-on-route route current-distance
       ask current-segment [set color white]
       ; find point on route to position car
       ; TODO add route stepper to avoid overstep
@@ -261,13 +262,13 @@ end
 ; we have to do it this way until fixed
 to-report valet-picked-car?
   let nearest-car find-nearest-valet-car
-  let route calc-route location [location] of nearest-car
+  let route calc-route-points location [location] of nearest-car
   ifelse route = false
   [ report false]
-  [ create-trip-with nearest-car
+  [ create-trip-to nearest-car
     [ set trip-route route
       set shape "trip"
-      display-route trip-route yellow
+      display-route-by-point trip-route yellow
     ]
     set color yellow
     report true
@@ -302,7 +303,7 @@ to-report customer-arrived?
   ; check if reached end-of-route
   ifelse trip-created? [
     let my-route [trip-route] of one-of my-trips
-    let dst [end2] of last my-route
+    let dst last my-route
     report equal-points? location dst
   ][report false]
 end
@@ -318,17 +319,17 @@ to-report create-trip
   let nearest-car find-nearest-customer-car
   if nearest-car = false [report false]
   ; should not create trip if there is no route to car
-  let route-to-car calc-route location [location] of nearest-car
-  if route-to-car = false [report false]
+  let route-from-car calc-route-points [location] of nearest-car location
+  if route-from-car = false [report false]
 
   ; create trip to random destination (route is guaranteed not to fail)
   let random-route calc-route-with-rnd-dst location
-  let random-dst [end1] of last random-route ; TODO: convert route to list of points
+  let random-dst last random-route
 
-  create-trip-with nearest-car
-  [ set trip-route route-to-car
+  create-trip-from nearest-car
+  [ set trip-route route-from-car
     set shape "trip"
-    display-route trip-route yellow
+    display-route-by-point trip-route yellow
   ]
   set color red
   set hidden? false
@@ -373,9 +374,12 @@ to end-customer-trip
   set payments payments + 1
 end
 
-; Load network of GIS polyline data into points connected by segments
-; A segment is used to link points along a polyline
-; A single point is used where one or more polylines intersect
+; Load network of GIS polyline data into points connected by segments.
+; A segment is used to link points along a polyline.
+; A single point is used where one or more polylines intersect.
+; Segment length is the length between the points in world coordinates.
+; GIS data should represent a single network. If it is not a single network
+; then the result is a collection of disconnected networks (not good for a road network).
 to build-road-network
   ask points [ die ]
   ; only one vector feature (I think)
@@ -394,6 +398,8 @@ to build-road-network
         [ let x item 0 coord
           let y item 1 coord
           ; find if a point already exists at this coord
+          ; Tip: reducing the precision of input data may result in finding
+          ; more intersections
           let existing-point one-of points with [xcor = x and ycor = y]
           ifelse existing-point = nobody
           [ ifelse first-point = nobody
@@ -419,7 +425,6 @@ to build-road-network
           ][
             ; existing point found so this is an intersection
             ask existing-point [set shape "square 3"]
-
             ifelse first-point = nobody
             [
               ; first point already exists so no need to create a point
@@ -427,7 +432,7 @@ to build-road-network
               set previous-point existing-point
             ][
               ; connect previous segment end to existing point
-              ask existing-point [create-segment-with previous-point [set seg-length link-length]]
+              ask previous-point [create-segment-with existing-point [set seg-length link-length]]
               set previous-point existing-point
             ]
           ]
@@ -444,19 +449,13 @@ to take-step-on-route
   ; TBD
 end
 
-; returns a list of segments or false if no route found
-to-report calc-route [src dst]
-  ; route will sometimes fail (maybe due to breaks in network)
-  let route false
-  ask src [set route nw:weighted-path-to dst seg-length]
-  report route
-end
-
-; generate a list of points along a route from points [src] to [dst]
-; if no route founds returns the empty list
-; this is useful because segments have implicit direction and may not be in the correct order
-; plus it makes it easier to step along the route using points instead of segments
-; and in other operations on routes
+; Generate a list of [point]s along a [route] from the [point]s [src] to [dst].
+; If no [route] found returns [false] (like an exception).
+;
+; Representing a route as a list of points instead of segments is useful because
+; segments have implicit direction and may not be in the correct direction.
+; Plus it makes it easier to step along the route using points instead of segments
+; and in other operations on routes.
 to-report calc-route-points [src dst]
   let route false
   ask src [set route nw:turtles-on-weighted-path-to dst seg-length]
@@ -491,11 +490,11 @@ end
 ;*********************************************************************************************
 
 to-report distance-between [src dst]
-  let route calc-route src dst
+  let route calc-route-points src dst
   ; some number larger than any possible other route distance in this world
   ; (because some route calcs fail and this method is expected to be used to find a min)
   if route = false [report 1000000000]
-  report route-distance route
+  report route-distance-by-point route
 end
 
 ; reports road point underlying x,y
@@ -524,7 +523,7 @@ to-report calc-route-with-rnd-dst [src]
   let route false
   while [route = false][
     let dst other-point src
-    set route calc-route src dst
+    set route calc-route-points src dst
   ]
   report route
 end
@@ -536,22 +535,15 @@ to-report other-point [src]
   report dst
 end
 
-to-report route-distance [route]
-  report sum map [seg -> [seg-length] of seg] route
-end
-
-to display-route [route route-color]
-  let src [end1] of first route
-  let dst [end2] of last route
-  ask src [
-  set hidden? false
-  set shape "circle 3"
-  set color red]
-ask dst [
-  set hidden? false
-  set shape "square 3"
-  set color red]
-  foreach route [seg -> ask seg [set color route-color]]
+to-report route-distance-by-point [route]
+  let route-distance 0
+  let previous-point first route
+  foreach but-first route [ current-point ->
+    let seg get-segment-between-points previous-point current-point
+    set route-distance route-distance + first [seg-length] of seg
+    set previous-point current-point
+  ]
+  report route-distance
 end
 
 to hide-route [route]
@@ -559,22 +551,33 @@ to hide-route [route]
 end
 
 ; find segment at [distance-along] [route]
-to-report find-segment [route distance-along]
+to-report find-segment-on-route [route distance-along]
   let found-seg nobody
   let current-distance 0
-  foreach route [seg ->
-    set found-seg seg
-    set current-distance current-distance + [seg-length] of seg
+  let previous-point first route
+  foreach but-first route [current-point ->
+    set found-seg get-segment-between-points previous-point current-point
+    set current-distance current-distance + first [link-length] of found-seg
     if current-distance > distance-along [report found-seg ]
+    set previous-point current-point
   ]
   report found-seg
 end
 
+; get one segment between two points
+to-report get-segment-between-points [src dst]
+;  print word src dst
+  report n-of 1 segments with [
+    (end1 = src and end2 = dst) or
+    (end1 = dst and end2 = src)
+  ]
+end
+
 ; get point at a distance along a segment
 to-report point-at-distance-on-segment [ seg dist ]
-  let seg-len [seg-length] of seg
-  let start-point [end1] of seg
-  let end-point [end2] of seg
+  let seg-len first [seg-length] of seg
+  let start-point first [end1] of seg
+  let end-point first [end2] of seg
   let startx [xcor] of start-point
   let starty [ycor] of start-point
   let endx [xcor] of end-point
@@ -597,8 +600,8 @@ to show-route
   ask segments with [color = red] [set color gray]
   let src one-of points
   let dst other-point src
-  let route calc-route src dst
-  if route != false [display-route route red]
+  let route calc-route-points src dst
+  if route != false [display-route-by-point route red]
 end
 
 to show-route-using-points
@@ -609,7 +612,7 @@ to show-route-using-points
   let src one-of points
   let dst other-point src
   let route calc-route-points src dst
-  display-route-by-points route red
+  display-route-by-point route red
 end
 
 ; find segments at [route-point]
@@ -617,19 +620,8 @@ to-report find-segments-at-point [route-point]
   report [my-segments] of route-point
 end
 
-; find the set of segments intersecting route
-to-report find-segments-intersecting-route [candidate-segments route]
-  ; find segments where both ends are on route
-  let intersecting-segments []
-  ask candidate-segments [
-    if member? end1 route and member? end2 route
-    [set intersecting-segments fput self intersecting-segments]
-  ]
-  report links with [member? self intersecting-segments]
-end
-
-to display-route-by-points [route route-color]
-  if not empty? route [
+to display-route-by-point [route route-color]
+  if route != false and not empty? route [
     let src first route
     let dst last route
     ask src [
@@ -640,12 +632,11 @@ to display-route-by-points [route route-color]
       set hidden? false
       set shape "square 3"
       set color route-color]
-    foreach route [route-point ->
-      ; find segments at point of route
-      let segs find-segments-at-point route-point
-      ; find which segments are on route
-      let intersecting-segs find-segments-intersecting-route segs route
-      ask intersecting-segs [set color route-color]
+    let previous-point first route
+    foreach but-first route [current-point ->
+      let seg get-segment-between-points previous-point current-point
+      ask seg [set color route-color]
+      set previous-point current-point
     ]
   ]
 end
@@ -684,7 +675,7 @@ to show-points-with-no-route
 ;          set hidden? false
 ;          ifelse route = false [set color red][set color green]
         ][
-          display-route-by-points route black + 2
+          display-route-by-point route black + 2
         ]
 
       ]
@@ -695,42 +686,65 @@ to show-points-with-no-route
   print "show-points-with-no-route: done"
 end
 
-; unused
-
-;to-report distance-to-car [src] ; car reporter
-;  report distance-between src location
-;  let route-to-car calc-route src location
-;  ; some number larger than any possible other route distance in this world
-;  if route-to-car = false [report 1000000000]
-;  report route-distance route-to-car
-;end
-
-; road point here?
-;to-report road-point-here? [this-point]
-;  let x [xcor] of this-point
-;  let y [ycor] of this-point
-;  report road-pointxy-here x y != nobody
-;end
-
-;to-report calc-route-rnd
-;  let route false
-;  while [route = false][
+;*********************************************************************************************
+; unit-tests
+;*********************************************************************************************
+to unit-tests
+  let success? true
+  ; calc-route-points
+;  if success? [
+;    ; route returns first and last
 ;    let src one-of points
 ;    let dst other-point src
-;    show word src dst
-;    set route calc-route src dst
+;    let route calc-route-points src dst
+;    while [route = false][
+;      set dst other-point src
+;      set route calc-route-points src dst
+;    ]
+;    set success? src = first route and dst = last route
 ;  ]
-;  report route
-;end
-
-;to-report calc-route-rnd-src [dst]
-;  let route false
-;  while [route = false][
-;    let src other-point dst
-;    set route calc-route src dst
+;  ; get-segment-between-points
+;  if success? [
+;    let src one-of points
+;    let route calc-route-with-rnd-dst src
+;    set success? get-segment-between-points src first but-first route != nobody
 ;  ]
-;  report route
-;end
+;  ; display-route
+;  if success? [
+;    let src one-of points
+;    let route calc-route-with-rnd-dst src
+;    display-route-by-point route red
+;  ]
+;  ; route-distance
+;  if success? [
+;    let src one-of points
+;    let route calc-route-with-rnd-dst src
+;    set success? route-distance-by-point route > 0
+;  ]
+;  ; find-segment-on-route
+;  if success? [
+;    let src one-of points
+;    let route calc-route-with-rnd-dst src
+;    set success? find-segment-on-route route 0.0000000001 != nobody
+;  ]
+;  ; point-at-distance-on-segment
+;  if success? [
+;    set success? point-at-distance-on-segment one-of segments 0.0000000001 != nobody
+;  ]
+  ; take-step
+  if success? [
+    let src one-of points
+    let route calc-route-with-rnd-dst src
+    ask one-of turtles [hatch-valets 1 [
+        set location src
+        setxy [xcor] of src [ycor] of location
+      ]
+    ]
+    let test-valet one-of valets with [xcor = [xcor] of src and ycor = [ycor] of src]
+    ask valet [who] of test-valet [take-step route 1]
+  ]
+  ifelse success? [print "passed"][print "failed"]
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
 215
@@ -764,7 +778,7 @@ BUTTON
 160
 70
 193
-Setup
+NIL
 setup
 NIL
 1
@@ -802,7 +816,7 @@ num-carowners
 num-carowners
 0
 100
-1.0
+4.0
 1
 1
 NIL
@@ -843,7 +857,7 @@ BUTTON
 160
 210
 193
-Go
+NIL
 go
 T
 1
@@ -904,7 +918,7 @@ BUTTON
 160
 138
 193
-Step
+step
 go
 NIL
 1
@@ -936,9 +950,9 @@ NIL
 BUTTON
 15
 195
-70
+87
 228
-Restart
+restart
 init-model
 NIL
 1
@@ -948,6 +962,16 @@ NIL
 NIL
 NIL
 NIL
+1
+
+TEXTBOX
+795
+100
+1075
+120
+https://www.santamonica.gov/isd/gis
+8
+7.0
 1
 
 @#$#@#$#@
