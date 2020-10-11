@@ -18,7 +18,7 @@ breed [customers customer]
 breed [valets valet]
 breed [carowners carowner]
 customers-own [location wait-time payments]
-valets-own [available? delivery earnings location wait-time valet-step-num]
+valets-own [available? delivery earnings wait-time valet-step-num]
 carowners-own [owner-cars earnings location]
 directed-link-breed [trips trip]
 trips-own [trip-route]
@@ -84,24 +84,25 @@ to setup
   clear-setup
   set step-length .2
   create-valets num-valets [
-    set shape "person"
     set color grey
-    set location one-of points
-    setxy [xcor] of location [ycor] of location
+    set shape "person"
+    let src one-of points
+    setxy [xcor] of src [ycor] of src
     set available? true
     set earnings 0
+    set valet-step-num 0
   ]
   create-customers num-customers [
+    set hidden? true
+    set color grey
     set shape "person"
-    set color black
     set location one-of points
     setxy [xcor] of location [ycor] of location
-    set hidden? true
   ]
   create-cars num-carowners [
+    set color grey
     set shape "car top"
     set speed 20
-    set color grey
     set location one-of points
     setxy [xcor] of location [ycor] of location
   ]
@@ -116,39 +117,39 @@ end
 to go
   ask customers [
     ; randomly create a trip
-    if create-trip?
-    [if create-trip = false [increment-wait 10]] ; estimated time penalty for no cars available
+    if create-customer-trip?
+    [if create-customer-trip = false [increment-wait 10]] ; estimated time penalty for no cars available
     ; if trip created and not delivered, wait for car
-    if waiting-for-car? [increment-wait 1]
+    if customer-waiting-for-car? [increment-wait 1]
     ; if in car, take step to destination
-    if customer-in-car? [take-step-on-route]
+    if car-at-customer? [take-step-on-route]
     ; if arrived at destination, pay and remove trip
     if customer-arrived? [end-customer-trip]
   ]
 
-  ask valets[
-    ; if deliveries available, pick one otherwise wait
-    ifelse deliveries-available?
-    [ if valet-picked-car? = false [ increment-wait 1 ] ]
-    [ increment-wait 1 ]
-    ; if in-delivery, either scooter to car, or drive to customer
-    if valet-on-scooter? [valet-step-to-car]
-;    if valet-in-car? [valet-step-to-customer]
-;    ; if arrived at customer, complete delivery
-;    if valet-arrived-at-customer? [complete-delivery]
-  ]
-
-  ask cars [
-    ; if route available, step towards destination, otherwise wait
-  ]
-
-  ask carowners [
-    ; if car unavailable, randomly make available
-    ; if car available, randomly make unavailable
-    ; if car active, randomly request return
-    ; if return requested, wait
-    ; if car returned, make unavailable
-  ]
+;  ask valets[
+;    ; if deliveries available, pick one otherwise wait
+;    ifelse deliveries-available?
+;    [ if valet-picked-car? = false [ increment-wait 1 ] ]
+;    [ increment-wait 1 ]
+;    ; if in-delivery, either scooter to car, or drive to customer
+;    if valet-on-scooter? [valet-step-to-car]
+;;    if valet-at-car? [valet-step-to-customer]
+;;    ; if arrived at customer, complete delivery
+;;    if valet-arrived-at-customer? [complete-delivery]
+;  ]
+;
+;  ask cars [
+;    ; if route available, step towards destination, otherwise wait
+;  ]
+;
+;  ask carowners [
+;    ; if car unavailable, randomly make available
+;    ; if car available, randomly make unavailable
+;    ; if car active, randomly request return
+;    ; if return requested, wait
+;    ; if car returned, make unavailable
+;  ]
 
   tick
 
@@ -160,18 +161,20 @@ to-report valet-on-scooter?
 end
 
 to valet-step-to-car
-  let route [trip-route] of one-of my-links
+  let route [trip-route] of one-of my-trips ; only one trip
   let route-length route-distance route
   let num-steps round(route-length / step-length)
   ifelse valet-step-num < num-steps [
-      take-step route valet-step-num
+    take-step route valet-step-num
+    set valet-step-num valet-step-num + 1
   ][
+    ; arrived at car
     move-to last route
+    set valet-step-num 0
   ]
-  set valet-step-num valet-step-num + 1
 end
 
-to-report valet-in-car?
+to-report valet-at-car?
   report delivery-selected? and valet-arrived-at-car?
 end
 
@@ -185,9 +188,8 @@ to-report delivery-selected?
 end
 
 to-report valet-arrived-at-car?
-  let car-to-deliver [end2] of one-of my-links ; valet has one link
-  let car-location [location] of car-to-deliver
-  report distance-between location car-location = 0
+  let car-to-deliver [end2] of one-of my-trips ; valet has one trip
+  report at-car? car-to-deliver
 end
 
 to-report valet-arrived-at-customer?
@@ -209,13 +211,14 @@ end
 ; we have to do it this way until fixed
 to-report valet-picked-car?
   let nearest-car find-nearest-valet-car
-  let route calc-route location [location] of nearest-car
+  let route calc-route point-here xcor ycor [location] of nearest-car
   ifelse route = false
   [ report false]
   [ create-trip-to nearest-car
     [ set trip-route route
       set shape "trip"
-      display-route-by-point trip-route yellow
+      set color yellow - 3
+      display-route trip-route yellow
     ]
     set color yellow
     report true
@@ -224,7 +227,7 @@ end
 
 ; condidition to create a trip randomly
 ; may expand to simulate a demand curve
-to-report create-trip?
+to-report create-customer-trip?
   report not trip-created? and ticks mod 20 = 0 and random-float 1 <= trip-frequency
 end
 
@@ -233,16 +236,16 @@ to-report trip-created?
   report  count my-links > 0
 end
 
-; waiting for car
-to-report waiting-for-car?
-  report trip-created? and not customer-in-car?
+; customer waiting for car
+to-report customer-waiting-for-car?
+  report trip-created? and not car-at-customer?
 end
 
-; customer in car
-to-report customer-in-car?
+; customer at car
+to-report car-at-customer?
   ifelse trip-created? [
     let my-car [end2] of one-of my-trips
-    report not in-car? my-car
+    report not at-car? my-car
   ][report false]
 end
 
@@ -251,7 +254,7 @@ to-report customer-arrived?
   ifelse trip-created? [
     let my-route [trip-route] of one-of my-trips
     let dst last my-route
-    report equal-points? location dst
+    report agent-here? dst
   ][report false]
 end
 
@@ -262,7 +265,7 @@ end
 
 ; create customer trip
 ; also creates trip from car to customer
-to-report create-trip
+to-report create-customer-trip
   let nearest-car find-nearest-customer-car
   if nearest-car = false [report false]
   ; should not create trip if there is no route to car
@@ -276,7 +279,8 @@ to-report create-trip
   create-trip-from nearest-car
   [ set trip-route route-from-car
     set shape "trip"
-    display-route-by-point trip-route yellow
+    set color yellow - 3
+    display-route trip-route yellow
   ]
   set color red
   set hidden? false
@@ -308,8 +312,8 @@ end
 
 to-report sort-cars-by-increasing-distance
   report sort-by [ [car1 car2] ->
-    distance-between location [location] of car1 <
-    distance-between location [location] of car2
+    distance-between point-here xcor ycor [location] of car1 <
+    distance-between point-here xcor ycor [location] of car2
   ] [self] of cars
 end
 
@@ -333,12 +337,12 @@ end
 ; TODO handle overstep
 to take-step [route step-num]
   let current-distance step-num * step-length
-  let current-segment find-segment-on-route route current-distance
+  let line find-line-on-route route current-distance
   ; find point on route to position car
-  let next-pointXY point-at-distance-on-segment current-segment step-length
-  let x item 0 next-pointXY
-  let y item 1 next-pointXY
-  let end-point [end2] of current-segment
+  let xy xy-at-distance-on-line line step-length
+  let x item 0 xy
+  let y item 1 xy
+  let end-point item 1 line
   face end-point
   setxy x y
 end
@@ -364,24 +368,27 @@ to-report distance-between [src dst]
   report route-distance route
 end
 
-; reports road point underlying x,y
-to-report road-pointxy-here [x y]
+; reports road point at x,y
+to-report point-here [x y]
   report one-of points with [xcor = x and ycor = y] ; expect only none or one
 end
 
-to-report equal-points? [p1 p2]
-  let p1X [xcor] of p1
-  let p1Y [ycor] of p1
-  let p2X [xcor] of p2
-  let p2y [ycor] of p2
-  report p1X = p2Y and p1Y = p2Y
+;to-report equal-points? [p1 p2]
+;  let p1x [xcor] of p1
+;  let p1y [ycor] of p1
+;  let p2x [xcor] of p2
+;  let p2y [ycor] of p2
+;  report p1x = p2x and p1y = p2y
+;end
+
+; is a car in the same spot as this agent?
+to-report at-car? [a-car]
+  report is-car? a-car and agent-here? a-car
 end
 
-; report if car in same spot as this agent
-to-report in-car? [this-car]
-  let carX [xcor] of this-car
-  let carY [ycor] of this-car
-  report xcor = carX and ycor = carY
+; is there an agent here?
+to-report agent-here? [agent]
+  report xcor = [xcor] of agent and ycor = [ycor] of agent
 end
 
 ; find a random route
@@ -402,6 +409,7 @@ to-report other-point [src]
   report dst
 end
 
+; get length of route
 to-report route-distance [route]
   let dist 0
   let previous-point first route
@@ -413,22 +421,17 @@ to-report route-distance [route]
   report dist
 end
 
-to hide-route [route]
-  foreach route [seg -> ask seg [set color grey]]
-end
-
-; find segment at [distance-along] [route]
-to-report find-segment-on-route [route distance-along]
-  let found-seg nobody
-  let current-distance 0
-  let previous-point first route
-  foreach but-first route [current-point ->
-    set found-seg get-segment-between-points previous-point current-point
-    set current-distance current-distance + [link-length] of found-seg
-    if current-distance > distance-along [report found-seg ]
-    set previous-point current-point
+; find segment, in the form of [src,dst,length] at [dist] along [route]
+to-report find-line-on-route [route dist]
+  let crnt-dist 0
+  let prev first route
+  foreach but-first route [crnt ->
+    let seg-len [link-length] of get-segment-between-points prev crnt
+    set crnt-dist crnt-dist + seg-len
+    if crnt-dist > dist [report (list prev crnt seg-len) ]
+    set prev crnt
   ]
-  report found-seg
+  report []
 end
 
 ; get one segment between two points
@@ -440,21 +443,21 @@ to-report get-segment-between-points [src dst]
   ]
 end
 
-; get point at a distance along a segment
-to-report point-at-distance-on-segment [ seg dist ]
-  let seg-len [seg-length] of seg
-  let start-point [end1] of seg
-  let end-point [end2] of seg
+; get point at a distance along a line
+to-report xy-at-distance-on-line [ line dist ]
+  let start-point item 0 line
+  let end-point item 1 line
+  let line-len item 2 line
   let startx [xcor] of start-point
   let starty [ycor] of start-point
   let endx [xcor] of end-point
   let endy [ycor] of end-point
-  let x startx + (endx - startx) * dist / seg-len
-  let y starty + (endy - starty) * dist / seg-len
+  let x startx + (endx - startx) * dist / line-len
+  let y starty + (endy - starty) * dist / line-len
   report list x y
 end
 
-to display-route-by-point [route route-color]
+to display-route [route route-color]
   if route != false and not empty? route [
     let src first route
     let dst last route
@@ -473,6 +476,30 @@ to display-route-by-point [route route-color]
       set previous-point current-point
     ]
   ]
+end
+
+to hide-route [route]
+  let src first route
+  let dst last route
+  ask src [
+    set hidden? true
+    set shape ifelse-value junction? src ["square 3"]["circle 3"]
+    set color grey]
+  ask dst [
+    set hidden? true
+    set shape ifelse-value junction? src ["square 3"]["circle 3"]
+    set color grey]
+  let previous-point first route
+  foreach but-first route [current-point ->
+    let seg get-segment-between-points previous-point current-point
+    ask seg [set color grey]
+    set previous-point current-point
+  ]
+end
+
+; point is a junction if it has more than 2 segments
+to-report junction? [a-point]
+  report count [my-segments] of a-point > 2
 end
 
 ; Load network of GIS polyline data into points connected by segments.
@@ -557,7 +584,7 @@ to show-route
   let src one-of points
   let dst other-point src
   let route calc-route src dst
-  if route != false [display-route-by-point route red]
+  if route != false [display-route route red]
 end
 
 to show-route-using-points
@@ -568,13 +595,13 @@ to show-route-using-points
   let src one-of points
   let dst other-point src
   let route calc-route src dst
-  display-route-by-point route red
+  display-route route red
 end
 
-; find segments at [route-point]
-to-report find-segments-at-point [route-point]
-  report [my-segments] of route-point
-end
+;; find segments at [route-point] (debug)
+;to-report segments-of-point [a-point]
+;  report [my-segments] of a-point
+;end
 
 ; show points with num connections (debug)
 to show-edge-points [num-links]
@@ -610,7 +637,7 @@ to show-points-with-no-route
 ;          set hidden? false
 ;          ifelse route = false [set color red][set color green]
         ][
-          display-route-by-point route black + 2
+          display-route route black + 2
         ]
 
       ]
@@ -621,13 +648,13 @@ to show-points-with-no-route
   print "show-points-with-no-route: done"
 end
 
-; old
+; old but good
 ;to drive-route [src dst]
 ;  ask segments with [color = white or color = red] [set color gray]
 ;  ask route-car [set hidden? false]
 ;  let route calc-route src dst
 ;  ifelse route = false [stop][
-;    display-route-by-point route red
+;    display-route route red
 ;    let rdistance route-distance-by-point route
 ;    ; move a car a fixed distance along route
 ;    ; speed is in MPH
@@ -641,11 +668,11 @@ end
 ;    let remaining-steps num-steps
 ;    while [remaining-steps >= 0] [
 ;      let current-distance (num-steps - remaining-steps) * step-length
-;      let current-segment find-segment-on-route route current-distance
+;      let current-segment find-line-on-route route current-distance
 ;      ask current-segment [set color white]
 ;      ; find point on route to position car
 ;      ; TODO add route stepper to avoid overstep
-;      let carXY point-at-distance-on-segment current-segment step-length
+;      let carXY xy-at-distance-on-line current-segment step-length
 ;      let x item 0 carXY
 ;      let y item 1 carXY
 ;      let end-point [end2] of current-segment
@@ -691,7 +718,8 @@ to unit-tests
   if success? [
     let src one-of points
     let route calc-route-with-rnd-dst src
-    display-route-by-point route red
+    display-route route red
+    hide-route route
   ]
   ; route-distance
   if success? [
@@ -699,29 +727,103 @@ to unit-tests
     let route calc-route-with-rnd-dst src
     set success? route-distance route > 0
   ]
-  ; find-segment-on-route
+  ; find-line-on-route
   if success? [
     let src one-of points
     let route calc-route-with-rnd-dst src
-    set success? find-segment-on-route route 0.0000000001 != nobody
+    let line find-line-on-route route 0.0000000001
+    set success? length line = 3 and item 0 line != nobody and item 1 line != nobody and item 2 line > 0
   ]
-  ; point-at-distance-on-segment
+  ; xy-at-distance-on-line
   if success? [
-    set success? point-at-distance-on-segment one-of segments 0.0000000001 != nobody
+    let src one-of points
+    let dst other-point src
+    let line (list src dst 0.0000000001)
+    let xy xy-at-distance-on-line line 0.0000000001
+    set success? num-within-range? item 0 xy min-pxcor max-pxcor and num-within-range? item 1 xy min-pycor max-pycor
   ]
   ; take-step
   if success? [
+    setup
     let src one-of points
+    hatch-valet-at src
+    let valet-id valet-who-at src
     let route calc-route-with-rnd-dst src
-    ask one-of turtles [hatch-valets 1 [
-        set location src
-        setxy [xcor] of src [ycor] of location
+    display-route route yellow
+    ask valet valet-id [
+      let route-len route-distance route
+      let num-steps round(route-len / step-length)
+      foreach but-first range num-steps [step-num ->
+        take-step route step-num
       ]
+      let dst last route
+      move-to dst
+      set success? agent-here? dst
     ]
-    let test-valet one-of valets with [xcor = [xcor] of src and ycor = [ycor] of src]
-    ask valet [who] of test-valet [take-step route 1]
+  ]
+  ; valet-step-to-car
+  if success? [
+    setup
+    let src one-of points
+    hatch-valet-at src
+    let valet-id valet-who-at src
+    let route calc-route-with-rnd-dst src
+    let dst last route
+    hatch-car-at dst
+    let car-id car-who-at dst
+    ask valet valet-id [
+      create-trip-to car car-id
+      [ set trip-route route
+        set shape "trip"
+        set color yellow - 3
+        display-route trip-route yellow
+      ]
+      let route-len route-distance route
+      let num-steps round(route-len / step-length)
+      foreach but-first range num-steps [ ->
+        valet-step-to-car
+      ]
+      valet-step-to-car
+      valet-step-to-car
+      set success? valet-arrived-at-car?
+    ]
+;    ask valet valet-who [die]
+;    hide-route route
   ]
   ifelse success? [print "passed"][print "failed"]
+  clear-setup
+end
+
+; num within range inclusive
+to-report num-within-range? [num range-min range-max]
+  report num >= range-min and num <= range-max
+end
+
+to hatch-valet-at [a-point]
+  ask one-of valets [hatch-valets 1 [
+      setxy [xcor] of a-point [ycor] of a-point
+      set color yellow
+      set hidden? false
+    ]
+  ]
+end
+
+to hatch-car-at [a-point]
+  ask one-of cars [hatch-cars 1 [
+      setxy [xcor] of a-point [ycor] of a-point
+      set color yellow
+;      set hidden? false
+    ]
+  ]
+end
+
+; get who of valet at this location
+to-report valet-who-at [src]
+  report [who] of one-of valets with [xcor = [xcor] of src and ycor = [ycor] of src]
+end
+
+to-report car-who-at [src]
+  report [who] of one-of cars with [xcor = [xcor] of src and ycor = [ycor] of src]
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
