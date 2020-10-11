@@ -163,8 +163,10 @@ to valet-step-to-car
   let route [trip-route] of one-of my-links
   let route-length route-distance route
   let num-steps round(route-length / step-length)
-  if num-steps > valet-step-num [
+  ifelse valet-step-num < num-steps [
       take-step route valet-step-num
+  ][
+    move-to last route
   ]
   set valet-step-num valet-step-num + 1
 end
@@ -336,7 +338,7 @@ to take-step [route step-num]
   let next-pointXY point-at-distance-on-segment current-segment step-length
   let x item 0 next-pointXY
   let y item 1 next-pointXY
-  let end-point first [end2] of current-segment
+  let end-point [end2] of current-segment
   face end-point
   setxy x y
 end
@@ -405,7 +407,7 @@ to-report route-distance [route]
   let previous-point first route
   foreach but-first route [ current-point ->
     let seg get-segment-between-points previous-point current-point
-    set dist dist + first [seg-length] of seg
+    set dist dist + [seg-length] of seg
     set previous-point current-point
   ]
   report dist
@@ -422,7 +424,7 @@ to-report find-segment-on-route [route distance-along]
   let previous-point first route
   foreach but-first route [current-point ->
     set found-seg get-segment-between-points previous-point current-point
-    set current-distance current-distance + first [link-length] of found-seg
+    set current-distance current-distance + [link-length] of found-seg
     if current-distance > distance-along [report found-seg ]
     set previous-point current-point
   ]
@@ -432,7 +434,7 @@ end
 ; get one segment between two points
 to-report get-segment-between-points [src dst]
 ;  print word src dst
-  report n-of 1 segments with [
+  report first [self] of n-of 1 segments with [
     (end1 = src and end2 = dst) or
     (end1 = dst and end2 = src)
   ]
@@ -440,9 +442,9 @@ end
 
 ; get point at a distance along a segment
 to-report point-at-distance-on-segment [ seg dist ]
-  let seg-len first [seg-length] of seg
-  let start-point first [end1] of seg
-  let end-point first [end2] of seg
+  let seg-len [seg-length] of seg
+  let start-point [end1] of seg
+  let end-point [end2] of seg
   let startx [xcor] of start-point
   let starty [ycor] of start-point
   let endx [xcor] of end-point
@@ -668,45 +670,45 @@ end
 to unit-tests
   let success? true
   ; calc-route
-;  if success? [
-;    ; route returns first and last
-;    let src one-of points
-;    let dst other-point src
-;    let route calc-route src dst
-;    while [route = false][
-;      set dst other-point src
-;      set route calc-route src dst
-;    ]
-;    set success? src = first route and dst = last route
-;  ]
-;  ; get-segment-between-points
-;  if success? [
-;    let src one-of points
-;    let route calc-route-with-rnd-dst src
-;    set success? get-segment-between-points src first but-first route != nobody
-;  ]
-;  ; display-route
-;  if success? [
-;    let src one-of points
-;    let route calc-route-with-rnd-dst src
-;    display-route-by-point route red
-;  ]
-;  ; route-distance
-;  if success? [
-;    let src one-of points
-;    let route calc-route-with-rnd-dst src
-;    set success? route-distance-by-point route > 0
-;  ]
-;  ; find-segment-on-route
-;  if success? [
-;    let src one-of points
-;    let route calc-route-with-rnd-dst src
-;    set success? find-segment-on-route route 0.0000000001 != nobody
-;  ]
-;  ; point-at-distance-on-segment
-;  if success? [
-;    set success? point-at-distance-on-segment one-of segments 0.0000000001 != nobody
-;  ]
+  if success? [
+    ; route returns first and last
+    let src one-of points
+    let dst other-point src
+    let route calc-route src dst
+    while [route = false][
+      set dst other-point src
+      set route calc-route src dst
+    ]
+    set success? src = first route and dst = last route
+  ]
+  ; get-segment-between-points
+  if success? [
+    let src one-of points
+    let route calc-route-with-rnd-dst src
+    set success? get-segment-between-points src first but-first route != nobody
+  ]
+  ; display-route
+  if success? [
+    let src one-of points
+    let route calc-route-with-rnd-dst src
+    display-route-by-point route red
+  ]
+  ; route-distance
+  if success? [
+    let src one-of points
+    let route calc-route-with-rnd-dst src
+    set success? route-distance route > 0
+  ]
+  ; find-segment-on-route
+  if success? [
+    let src one-of points
+    let route calc-route-with-rnd-dst src
+    set success? find-segment-on-route route 0.0000000001 != nobody
+  ]
+  ; point-at-distance-on-segment
+  if success? [
+    set success? point-at-distance-on-segment one-of segments 0.0000000001 != nobody
+  ]
   ; take-step
   if success? [
     let src one-of points
@@ -751,9 +753,9 @@ ticks
 
 BUTTON
 15
-160
+155
 70
-193
+188
 NIL
 setup
 NIL
@@ -830,9 +832,9 @@ HORIZONTAL
 
 BUTTON
 145
-160
+155
 210
-193
+188
 NIL
 go
 T
@@ -891,9 +893,9 @@ PENS
 
 BUTTON
 75
-160
+155
 138
-193
+188
 step
 go
 NIL
@@ -924,10 +926,10 @@ NIL
 1
 
 BUTTON
-15
-195
-87
-228
+50
+505
+122
+538
 restart
 init-model
 NIL
