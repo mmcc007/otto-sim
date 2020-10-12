@@ -214,7 +214,7 @@ end
 
 ; when car knows where to go it starts moving
 to-report car-routed?
-  report count my-trips = 1
+  report count my-out-trips = 1
 end
 
 ; move to destination with or without 'passenger' (who is really the driver)
@@ -279,16 +279,16 @@ to valet-step-to-car
     ; become passenger in car
 
     let car-to-deliver one-of out-trip-neighbors ; valet has one outgoing trip
-;    ask my-out-trips [die] ; remove existing trip to car
+    ask my-out-trips [die] ; remove existing trip to car
     ; car is currently reserved so has a route and a customer
 ;    set route [car-route] of car-to-deliver
 ;    let dst last route
     let current-customer [car-customer] of car-to-deliver
-;    create-trip-to current-customer [
-;      set shape "trip"
-;      set color yellow - 3
-;      set hidden? true
-;    ]
+    create-trip-to current-customer [
+      set shape "trip"
+      set color yellow - 3
+      set hidden? true
+    ]
     ask car-to-deliver [
       create-trip-to current-customer [
         set shape "trip"
@@ -342,7 +342,7 @@ end
 
 ; check if current position is destination (and a car)
 to-report valet-arrived-at-car?
-  report at-car? one-of out-trip-neighbors
+  report at-car? one-of cars with [car-passenger = myself]
 ;  let car-to-deliver [end2] of one-of my-trips ; valet has one trip
 ;  let arrived? at-car? car-to-deliver
 ;  if arrived? [
@@ -952,121 +952,121 @@ end
 to unit-tests
   let success? true
   ; calc-route
-;  if success? [
-;    ; route returns first and last
-;    let src random-road-point
-;    let dst other-point src
-;    let route calc-route src dst
-;    while [route = false][
-;      set dst other-point src
-;      set route calc-route src dst
-;    ]
-;    set success? src = first route and dst = last route
-;  ]
-;  ; get-segment-between-points
-;  if success? [
-;    let src random-road-point
-;    let route calc-route-with-rnd-dst src
-;    set success? get-segment-between-points src first but-first route != nobody
-;  ]
-;  ; display-route
-;  if success? [
-;    let src random-road-point
-;    let route calc-route-with-rnd-dst src
-;    display-route route red
-;    hide-route route
-;  ]
-;  ; route-distance
-;  if success? [
-;    let src random-road-point
-;    let route calc-route-with-rnd-dst src
-;    set success? route-distance route > 0
-;  ]
-;  ; find-line-on-route
-;  if success? [
-;    let src random-road-point
-;    let route calc-route-with-rnd-dst src
-;    let line find-line-on-route route 0.0000000001
-;    set success? length line = 3 and item 0 line != nobody and item 1 line != nobody and item 2 line > 0
-;  ]
-;  ; xy-at-distance-on-line
-;  if success? [
-;    let src random-road-point
-;    let dst other-point src
-;    let line (list src dst 0.0000000001)
-;    let xy xy-at-distance-on-line line 0.0000000001
-;    set success? num-within-range? item 0 xy min-pxcor max-pxcor and num-within-range? item 1 xy min-pycor max-pycor
-;  ]
-;  ; take-step
-;  if success? [
-;    setup
-;    let src random-road-point
-;    hatch-valet-at src
-;    let valet-id valet-who-at src
-;    let route calc-route-with-rnd-dst src
-;    display-route route yellow
-;    ask valet valet-id [
-;      let route-len route-distance route
-;      let num-steps round(route-len / step-length)
-;      foreach but-first range num-steps [step-num ->
-;        take-step route step-num nobody
-;      ]
-;      let dst last route
-;      move-to dst
-;      set success? agent-here? dst
-;    ]
-;  ]
-;  ; valet-step-to-car
-;  if success? [
-;    setup
-;    let src random-road-point
-;    hatch-valet-at src
-;    let test-valet valet valet-who-at src
-;    let route calc-route-with-rnd-dst src
-;    display-route route yellow
-;    let dst last route
-;    hatch-car-at dst
-;    let test-car car car-who-at dst
-;    let customer-location random-road-point
-;    hatch-customer-at customer-location
-;    let test-customer customer customer-who-at customer-location
-;    ; reserve the car
-;    ask test-car [
-;      set car-customer test-customer
-;      set car-route route
-;    ]
-;    ask test-valet [
-;      create-trip-to test-car
-;      [ set trip-route route
-;        set shape "trip"
-;        set color yellow - 3
-;      ]
-;      ; start moving
-;      let route-len route-distance route
-;      let num-steps round(route-len / step-length)
-;      foreach but-first range num-steps [ ->
-;        valet-step-to-car
-;      ]
-;      valet-step-to-car
-;      valet-step-to-car
-;      set success? valet-arrived-at-car?
-;      if not success? [
-;        ; sanity check
-;        print (word "car " test-car " = "  one-of out-trip-neighbors)
-;        print (word "destination " dst " = " last [car-route] of one-of out-trip-neighbors)
-;        let expected-car one-of out-trip-neighbors
-;        print (word "at a car? " expected-car " = "  at-car? expected-car)
-;        print (word "is a car? " expected-car " = "  is-car? expected-car)
-;        print (word "is a turtle? " expected-car " = "  is-turtle? expected-car)
-;        print (word "is agent here? " expected-car " = "  agent-here? expected-car)
-;        inspect test-customer
-;        inspect test-valet
-;        inspect test-car
-;        inspect dst
-;        inspect one-of my-out-trips
-;      ]
-;    ]
-;  ]
+  if success? [
+    ; route returns first and last
+    let src random-road-point
+    let dst other-point src
+    let route calc-route src dst
+    while [route = false][
+      set dst other-point src
+      set route calc-route src dst
+    ]
+    set success? src = first route and dst = last route
+  ]
+  ; get-segment-between-points
+  if success? [
+    let src random-road-point
+    let route calc-route-with-rnd-dst src
+    set success? get-segment-between-points src first but-first route != nobody
+  ]
+  ; display-route
+  if success? [
+    let src random-road-point
+    let route calc-route-with-rnd-dst src
+    display-route route red
+    hide-route route
+  ]
+  ; route-distance
+  if success? [
+    let src random-road-point
+    let route calc-route-with-rnd-dst src
+    set success? route-distance route > 0
+  ]
+  ; find-line-on-route
+  if success? [
+    let src random-road-point
+    let route calc-route-with-rnd-dst src
+    let line find-line-on-route route 0.0000000001
+    set success? length line = 3 and item 0 line != nobody and item 1 line != nobody and item 2 line > 0
+  ]
+  ; xy-at-distance-on-line
+  if success? [
+    let src random-road-point
+    let dst other-point src
+    let line (list src dst 0.0000000001)
+    let xy xy-at-distance-on-line line 0.0000000001
+    set success? num-within-range? item 0 xy min-pxcor max-pxcor and num-within-range? item 1 xy min-pycor max-pycor
+  ]
+  ; take-step
+  if success? [
+    setup
+    let src random-road-point
+    hatch-valet-at src
+    let valet-id valet-who-at src
+    let route calc-route-with-rnd-dst src
+    display-route route yellow
+    ask valet valet-id [
+      let route-len route-distance route
+      let num-steps round(route-len / step-length)
+      foreach but-first range num-steps [step-num ->
+        take-step route step-num nobody
+      ]
+      let dst last route
+      move-to dst
+      set success? agent-here? dst
+    ]
+  ]
+  ; valet-step-to-car
+  if success? [
+    setup
+    let src random-road-point
+    hatch-valet-at src
+    let test-valet valet valet-who-at src
+    let route calc-route-with-rnd-dst src
+    display-route route yellow
+    let dst last route
+    hatch-car-at dst
+    let test-car car car-who-at dst
+    let customer-location random-road-point
+    hatch-customer-at customer-location
+    let test-customer customer customer-who-at customer-location
+    ; reserve the car
+    ask test-car [
+      set car-customer test-customer
+      set car-route route
+    ]
+    ask test-valet [
+      create-trip-to test-car
+      [ set trip-route route
+        set shape "trip"
+        set color yellow - 3
+      ]
+      ; start moving
+      let route-len route-distance route
+      let num-steps round(route-len / step-length)
+      foreach but-first range num-steps [ ->
+        valet-step-to-car
+      ]
+      valet-step-to-car
+      valet-step-to-car
+      set success? valet-arrived-at-car?
+      if not success? [
+        ; sanity check
+        let expected-car one-of cars with [car-passenger = test-valet]
+        print (word "car " test-car " = "  expected-car)
+        print (word "destination " dst " = " last [car-route] of expected-car)
+        print (word "at a car? " expected-car " = "  at-car? expected-car)
+        print (word "is a car? " expected-car " = "  is-car? expected-car)
+        print (word "is a turtle? " expected-car " = "  is-turtle? expected-car)
+        print (word "is agent here? " expected-car " = "  agent-here? expected-car)
+        inspect test-customer
+        inspect test-valet
+        inspect test-car
+        inspect dst
+        inspect one-of my-out-trips
+      ]
+    ]
+  ]
   ; car-step
   if success? [
     setup
@@ -1077,11 +1077,16 @@ to unit-tests
     let route-to-customer calc-route-with-rnd-dst src
     let dst last route-to-customer
     hatch-customer-at dst
-    let customer-id customer-who-at dst
+    let test-customer customer customer-who-at dst
     hatch-car-at src
-    let car-id car-who-at src
-    ask customer customer-id [
-      create-trip-from car car-id
+    let test-car car car-who-at src
+    ; reserve the car
+    ask test-car [
+      set car-customer test-customer
+      set car-route route-to-customer
+    ]
+    ask test-customer [
+      create-trip-from test-car
       [ set trip-route route-to-customer
         set shape "trip"
         set color red
@@ -1089,17 +1094,17 @@ to unit-tests
       ]
     ]
     hatch-valet-at src
-    let valet-id valet-who-at src
-    ask valet valet-id [
+    let test-valet valet valet-who-at src
+    ask test-valet [
       ; construct a fake route to src
       let valet-fake-src nobody
       ask src [set valet-fake-src [other-end] of one-of my-segments]
       let valet-route-to-car list valet-fake-src src
-      create-trip-to car car-id [set trip-route valet-route-to-car]
+      create-trip-to test-car [set trip-route valet-route-to-car]
       set valet-step-num 1000000000
       valet-step-to-car ; at end of valet trip to car, ride car to customer
     ]
-    ask car car-id [
+    ask test-car [
       let route-length route-distance route-to-customer
       let num-steps round(route-length / step-length)
       foreach but-first range num-steps [ ->
@@ -1108,7 +1113,7 @@ to unit-tests
       car-step
       car-step
       let valet-arrived? false
-      ask valet valet-id [set valet-arrived? valet-arrived-at-customer?]
+      ask test-valet [set valet-arrived? valet-arrived-at-customer?]
 
       set success? car-arrived? and valet-arrived?
       if not success? [print "test: car_step failed"
