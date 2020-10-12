@@ -790,7 +790,7 @@ end
 
 ; get a random road network point
 to-report random-road-point
-  report one-of points with [is-member? = true]
+  report one-of points with [in-network? = true]
 end
 
 ;*********************************************************************************************
