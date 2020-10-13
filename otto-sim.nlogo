@@ -36,7 +36,6 @@ cars-own [
   car-passenger ; either the customer, the valet or nobody
   car-step-num ; current step along a route (for simulating speed)
   wait-time ; time spent waiting while in service
-  location
 ]
 
 ; the start of a trip is a customer, car, or valet
@@ -57,7 +56,7 @@ valets-own [available?
   valet-step-num ; current step along a route (during delivery)
 ]
 breed [carowners carowner]
-carowners-own [owner-cars earnings location]
+carowners-own [owner-cars earnings]
 
 globals [
   city-dataset
@@ -171,8 +170,8 @@ to cars-builder [num]
     set color grey
     set shape "car top"
     set hidden? false
-    set location random-road-point
-    setxy [xcor] of location [ycor] of location
+    let car-point random-road-point
+    setxy [xcor] of car-point [ycor] of car-point
     set speed 20
     set available-by-car-owner? true
     set in-service? true
@@ -220,13 +219,13 @@ to go
 ;;    ; if arrived at customer, complete delivery
 ;;    if valet-arrived-at-customer? [complete-delivery]
   ]
-;
-;  ask cars [
-;    ; if route available, step towards destination, otherwise wait
-;    ifelse car-routed? [car-step][increment-wait 1]
-;    ; if arrived at destination, reset to waiting mode
-;    if car-arrived? [car-idled]
-;  ]
+
+  ask cars [
+    ; if route available, step towards destination, otherwise wait
+    ifelse car-routed? [car-step][increment-wait 1]
+    ; if arrived at destination, reset to waiting mode
+    if car-arrived? [car-idled]
+  ]
 ;
 ;  ask carowners [
 ;    ; if car unavailable, randomly make available
@@ -348,7 +347,7 @@ to-report valet-picked-car
   ifelse delivery-selected? [report true]
   [
     let nearest-car find-nearest-valet-car
-    let route calc-route point-here xcor ycor [location] of nearest-car
+    let route calc-route point-here-agent self point-here-agent nearest-car
     ifelse route = false
     [ report false]
     [ ask nearest-car [set valet-claimed? true]
@@ -366,60 +365,66 @@ end
 
 ; ride scooter to a car using a trip with a route
 ; when arrived at car give car a route and become a passenger
+; change valet trip-to-car to trip-to-customer (even though riding in car)
 to valet-step-to-car
-  let route [trip-route] of one-of my-trips ; only one trip
-  let route-length route-distance route
-  let num-steps round(route-length / step-length)
-  ifelse valet-step-num < num-steps [
-    take-step route valet-step-num nobody
-    set valet-step-num valet-step-num + 1
-  ][
-    ; arrived at car
-;    set delivery-status "to-car"
-;    set hidden? true ; since getting in car now
-;    set valet-step-num 0 ; reset for next trip to car
-    move-to last route
+  if not valet-arrived-at-car? [
+   let route [trip-route] of one-of my-out-trips ; valet has one outgoing trip
+   let route-length route-distance route
+   let num-steps round(route-length / step-length)
+   ifelse valet-step-num < num-steps [
+     take-step route valet-step-num nobody
+     set valet-step-num valet-step-num + 1
+   ][
+     ; arrived at car
+ ;    set delivery-status "to-car"
+ ;    set hidden? true ; since getting in car now
+ ;    set valet-step-num 0 ; reset for next trip to car
+     move-to last route
 
-    ; set the car's trip to activate the car to travel to customer
-    ; become passenger in car
+     ; set the car's trip to activate the car to travel to customer
+     ; become passenger in car
 
-    let car-to-deliver one-of out-trip-neighbors ; valet has one outgoing trip
-    ask my-out-trips [die] ; remove existing trip to car
-    ; car is currently reserved so has a route and a customer
-;    set route [car-route] of car-to-deliver
-;    let dst last route
-    let current-customer [car-customer] of car-to-deliver
-    create-trip-to current-customer [
-      set shape "trip"
-      set color yellow - 3
-      set hidden? false
+     let car-to-deliver one-of out-trip-neighbors ; valet has one outgoing trip
+     ; car is currently reserved so has a route and a customer
+ ;    set route [car-route] of car-to-deliver
+ ;    let dst last route
+     let current-customer [car-customer] of car-to-deliver
+     let route-to-customer calc-route point-here-agent self point-here-agent current-customer
+     ask my-out-trips [die] ; remove existing trip to car
+     create-trip-to current-customer [
+       set trip-route route-to-customer
+       set shape "trip"
+       set color yellow - 3
+       set hidden? false
+     ]
+     ask car-to-deliver [
+       create-trip-to current-customer [
+         set trip-route route-to-customer
+         set shape "trip"
+         set color yellow - 3
+         set hidden? false
+       ]
+       set car-passenger myself
+     ]
+
+ ;    ; get new route from car's trip
+ ;;    let car-to-deliver [other-end] of one-of my-out-trips
+ ;    let car-to-deliver one-of out-trip-neighbors
+ ;    let car-trip-to-customer one-of [my-in-trips] of car-to-deliver ; car has one outgoing trip
+ ;    let car-route-to-customer [trip-route] of car-trip-to-customer
+ ;    let current-customer [end2] of car-trip-to-customer
+ ;    ; valet is 'driven' to customer
+ ;    ask car-to-deliver [set car-passenger myself]
+ ;
+ ;    ; replace existing trip with the car's trip to customer
+ ;    ask my-trips [die]
+ ;    create-trip-to current-customer [
+ ;      set trip-route car-route-to-customer
+ ;      set shape "trip"
+ ;      set color yellow - 3
+ ;      set hidden? true
+ ;    ]
     ]
-    ask car-to-deliver [
-      create-trip-to current-customer [
-        set shape "trip"
-        set color yellow - 3
-        set hidden? false
-      ]
-      set car-passenger myself
-    ]
-
-;    ; get new route from car's trip
-;;    let car-to-deliver [other-end] of one-of my-out-trips
-;    let car-to-deliver one-of out-trip-neighbors
-;    let car-trip-to-customer one-of [my-in-trips] of car-to-deliver ; car has one outgoing trip
-;    let car-route-to-customer [trip-route] of car-trip-to-customer
-;    let current-customer [end2] of car-trip-to-customer
-;    ; valet is 'driven' to customer
-;    ask car-to-deliver [set car-passenger myself]
-;
-;    ; replace existing trip with the car's trip to customer
-;    ask my-trips [die]
-;    create-trip-to current-customer [
-;      set trip-route car-route-to-customer
-;      set shape "trip"
-;      set color yellow - 3
-;      set hidden? true
-;    ]
   ]
 end
 
@@ -485,7 +490,7 @@ end
 to-report create-customer-trip
   let nearest-car find-nearest-customer-car
   if nearest-car = nobody [report false]
-  let route-from-car calc-route [location] of nearest-car location
+  let route-from-car calc-route point-here-agent nearest-car point-here-agent self
   ; should not create trip if there is no route to car
 ;  if route-from-car = false [report false]
 
@@ -650,6 +655,11 @@ end
 ; reports road point at x,y
 to-report point-here [x y]
   report one-of points with [xcor = x and ycor = y] ; expect only none or one
+end
+
+; point of agent
+to-report point-here-agent [agent]
+  report point-here [xcor] of agent [ycor] of agent
 end
 
 ;to-report equal-points? [p1 p2]
@@ -1050,10 +1060,10 @@ to unit-tests
   if success? [set success? test-take-step]
   if success? [set success? test-valet-step-to-car]
   if success? [set success? test-car-step]
+  if success? [set success? test-create-customer-trip]
   if success? [set success? test-cars-by-ascending-distance]
   if success? [set success? test-find-nearest-customer-car]
   if success? [set success? test-find-nearest-valet-car]
-  if success? [set success? test-create-customer-trip]
   if success? [set success? test-deliveries-available?]
   ifelse success? [print "passed" clear-setup][print "failed"]
 end
@@ -1247,6 +1257,17 @@ to-report test-car-step
   report success?
 end
 
+to-report test-create-customer-trip
+  let success? true
+  setup
+  let test-customer one-of customers
+  ask test-customer [
+    set success? create-customer-trip
+  ]
+  if not success? [print "create-customer-trip failed"]
+  report success?
+end
+
 to-report test-cars-by-ascending-distance
   let success? true
   clear-setup
@@ -1315,17 +1336,6 @@ to-report test-find-nearest-valet-car
       print filter-reserved-valet-cars cars-by-ascending-distance
     ]
   ]
-  report success?
-end
-
-to-report test-create-customer-trip
-  let success? true
-  setup
-  let test-customer one-of customers
-  ask test-customer [
-    set success? create-customer-trip
-  ]
-  if not success? [print "create-customer-trip failed"]
   report success?
 end
 
