@@ -1,6 +1,6 @@
 extensions [ gis nw ]
 
-; road map is a netork of points linked by segments
+; road map is a network of points linked by segments
 breed [ points point ]
 points-own [
   in-network? ; member of road network
@@ -852,28 +852,36 @@ to build-road-network
         ]
       ]
     ]
-  ]
-  ; scan for and set members of road network
-  while [not valid-road-network?][
-    scan-road-network one-of points
+    ; scan for and set members of road network
+    ; expect member rate of greater than 94%
+    discover-network 0.94 10
   ]
 end
 
-; expect member rate of greater than 90%
-to-report valid-road-network?
-  report count points with [in-network? = true] > count points * 0.9
+; discover road network and mark points as members
+; this may halt for high min member rate
+to discover-network [min-member-rate max-retries]
+  let retries 0
+  while [retries < max-retries and not valid-network? min-member-rate][
+    ask points [set in-network? false]
+    add-to-network one-of points
+    set retries retries + 1
+  ]
+  if retries = max-retries [
+    user-message (word "No network found at min member rate " min-member-rate ". \nRecommend halting. \nTry reducing min member rate or improve quality of input data.")
+  ]
 end
 
-; scan road network and mark points as members
-to scan-road-network [any-point]
+to-report valid-network? [min-member-rate]
+  report count points with [in-network? = true] / count points > min-member-rate
+end
+
+; recursively visits every point on candidate network
+to add-to-network [any-point]
   ask any-point [
     if not in-network?
     [ set in-network? true
-      ask my-segments [
-        if other-end != any-point [
-          ask other-end [scan-road-network self]
-        ]
-      ]
+      ask segment-neighbors [add-to-network self]
     ]
   ]
 end
@@ -923,29 +931,20 @@ end
 
 ; show all segments in road network
 to show-network
-;  clear-setup
-;  build-road-network
   init-model
-;  let a-point random-road-point
-;  ask a-point [set in-network? true]
-;  ask a-point [
-;    set hidden? false
-;    set color yellow
-;  ]
   ; visit every other point in network
-  while [not valid-road-network?][
+  while [not valid-network? 0.5][
     let any-point random-road-point
     ask any-point [
       set hidden? false
       set color yellow
     ]
     print any-point
-    scan-road-network any-point
+    add-to-network any-point
   ]
   ; display segments
   ask points with [in-network? = true]
     [ask my-segments [set color red]]
-
   let in-network count points with [in-network? = true]
   let total-points count points
   print (word "found " in-network " points in network out of " total-points " (" precision (in-network / total-points * 100) 2 "%)")
