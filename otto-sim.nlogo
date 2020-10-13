@@ -216,8 +216,8 @@ to go
     ; if in-delivery, scooter to car (or ride car to customer)
     if delivery-selected? [valet-step-to-car]
 ;;    if valet-in-car? [valet-step-to-customer]
-;;    ; if arrived at customer, complete delivery
-;;    if valet-arrived-at-customer? [complete-delivery]
+    ; if arrived at customer, complete delivery
+    if valet-arrived-at-customer? [valet-delivery-complete]
   ]
 
   ask cars [
@@ -260,7 +260,8 @@ to car-step
 ;    print "car arrived"
     if car-passenger != nobody
     [ask car-passenger
-      [ set hidden? false
+      [
+;        set hidden? false
         move-to last route
       ]
     ]
@@ -287,7 +288,7 @@ end
 ; check for deliveries available for this valet
 to-report deliveries-available?
   ; count available reserved cars
-  report not delivery-selected? and (count cars with [valet-car-reserved? self] > 0)
+  report delivery-selected? or (count cars with [valet-car-reserved? self] > 0)
 end
 
 ; check that valet has an active delivery
@@ -377,9 +378,9 @@ to valet-step-to-car
    ][
      ; arrived at car
  ;    set delivery-status "to-car"
- ;    set hidden? true ; since getting in car now
+     set hidden? true ; since getting in car now
  ;    set valet-step-num 0 ; reset for next trip to car
-     move-to last route
+     move-to last route ; TODO route stepper removes this
 
      ; set the car's trip to activate the car to travel to customer
      ; become passenger in car
@@ -441,8 +442,11 @@ end
 ;  let route  [trip-route] of car-trip
 ;end
 
-to complete-delivery
-
+; make self available again
+to valet-delivery-complete
+  ask my-trips [die]
+  set hidden? false
+  set color grey
 end
 
 ;*********************************************************************************************
@@ -1348,6 +1352,7 @@ to-report test-deliveries-available?
   let test1 true
   let test2 true
   let test3 true
+  let test4 true
   let test-valet one-of valets
   ; initially no deliveries available
   ask test-valet [set test1 not deliveries-available?]
@@ -1359,7 +1364,13 @@ to-report test-deliveries-available?
   ask one-of cars [set valet-claimed? true]
   ; delivery not available
   ask test-valet [set test3 not deliveries-available?]
-  set success? test1 and test2 and test3
+  ; re-init
+  ; valet has existing delivery, so should return true
+  ask test-valet [
+    create-trip-to one-of turtles
+    set test4 deliveries-available?
+  ]
+  set success? test1 and test2 and test3 and test4
   if not success? [print "deliveries-available? failed"]
   report success?
 end
