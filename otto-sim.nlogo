@@ -214,8 +214,8 @@ to go
     ifelse deliveries-available?
     [ if valet-picked-car = false [ increment-wait 1 ] ]
     [ increment-wait 1 ]
-;    ; if in-delivery, scooter to car (or ride car to customer)
-;    if delivery-selected? [valet-step-to-car]
+    ; if in-delivery, scooter to car (or ride car to customer)
+    if delivery-selected? [valet-step-to-car]
 ;;    if valet-in-car? [valet-step-to-customer]
 ;;    ; if arrived at customer, complete delivery
 ;;    if valet-arrived-at-customer? [complete-delivery]
@@ -287,7 +287,7 @@ end
 
 ; check for deliveries available for this valet
 to-report deliveries-available?
-  ; count reserved cars that have not been claimed by valets
+  ; count available reserved cars
   report not delivery-selected? and (count cars with [valet-car-reserved? self] > 0)
 end
 
@@ -376,8 +376,8 @@ to valet-step-to-car
   ][
     ; arrived at car
 ;    set delivery-status "to-car"
-    set hidden? true ; since getting in car now
-    set valet-step-num 0 ; reset for next trip to car
+;    set hidden? true ; since getting in car now
+;    set valet-step-num 0 ; reset for next trip to car
     move-to last route
 
     ; set the car's trip to activate the car to travel to customer
@@ -556,7 +556,8 @@ to-report find-nearest-customer-car
 ;  report min-one-of cars [distance-between location [location] of myself] may restore this when problem solved
 end
 
-; find nearest reserved car or return nobody
+; find nearest valet car or return nobody
+; TODO add distance from car to customer to get shortest overall trip
 to-report find-nearest-valet-car
   let available-cars filter-reserved-valet-cars cars-by-ascending-distance
 ;  let available-cars filter-cars-by-link-count cars-by-ascending-distance 1
@@ -1040,8 +1041,25 @@ end
 ; run after setup
 to unit-tests
   let success? true
-  ; calc-route
-  if success? [
+  if success? [set success? test-calc-route]
+  if success? [set success? test-get-segment-between-points]
+  if success? [set success? test-display-route]
+  if success? [set success? test-route-distance]
+  if success? [set success? test-find-line-on-route]
+  if success? [set success? test-xy-at-distance-on-line]
+  if success? [set success? test-take-step]
+  if success? [set success? test-valet-step-to-car]
+  if success? [set success? test-car-step]
+  if success? [set success? test-cars-by-ascending-distance]
+  if success? [set success? test-find-nearest-customer-car]
+  if success? [set success? test-find-nearest-valet-car]
+  if success? [set success? test-create-customer-trip]
+  if success? [set success? test-deliveries-available?]
+  ifelse success? [print "passed" clear-setup][print "failed"]
+end
+
+to-report test-calc-route
+  let success? true
     ; route returns first and last
     let src random-road-point
     let dst other-point src
@@ -1051,62 +1069,76 @@ to unit-tests
       set route calc-route src dst
     ]
     set success? src = first route and dst = last route
-  ]
-  ; get-segment-between-points
-  if success? [
+  report success?
+end
+
+to-report test-get-segment-between-points
+  let success? true
     let src random-road-point
     let route calc-route-with-rnd-dst src
     set success? get-segment-between-points src first but-first route != nobody
-  ]
-  ; display-route
-  if success? [
+  report success?
+end
+
+to-report test-display-route
+  let success? true
     let src random-road-point
     let route calc-route-with-rnd-dst src
     display-route route red
     hide-route route
-  ]
-  ; route-distance
-  if success? [
+  report success?
+end
+
+to-report test-route-distance
+  let success? true
     let src random-road-point
     let route calc-route-with-rnd-dst src
     set success? route-distance route > 0
-  ]
-  ; find-line-on-route
-  if success? [
+  report success?
+end
+
+to-report test-find-line-on-route
+  let success? true
     let src random-road-point
     let route calc-route-with-rnd-dst src
     let line find-line-on-route route 0.0000000001
     set success? length line = 3 and item 0 line != nobody and item 1 line != nobody and item 2 line > 0
-  ]
-  ; xy-at-distance-on-line
-  if success? [
+  report success?
+end
+
+to-report test-xy-at-distance-on-line
+  let success? true
     let src random-road-point
     let dst other-point src
     let line (list src dst 0.0000000001)
     let xy xy-at-distance-on-line line 0.0000000001
     set success? num-within-range? item 0 xy min-pxcor max-pxcor and num-within-range? item 1 xy min-pycor max-pycor
-  ]
-  ; take-step
-  if success? [
-    setup
-    let src random-road-point
-    hatch-valet-at src
-    let valet-id valet-who-at src
-    let route calc-route-with-rnd-dst src
-    display-route route yellow
-    ask valet valet-id [
-      let route-len route-distance route
-      let num-steps round(route-len / step-length)
-      foreach but-first range num-steps [step-num ->
-        take-step route step-num nobody
-      ]
-      let dst last route
-      move-to dst
-      set success? agent-here? dst
+  report success?
+end
+
+to-report test-take-step
+  let success? true
+  setup
+  let src random-road-point
+  hatch-valet-at src
+  let valet-id valet-who-at src
+  let route calc-route-with-rnd-dst src
+  display-route route yellow
+  ask valet valet-id [
+    let route-len route-distance route
+    let num-steps round(route-len / step-length)
+    foreach but-first range num-steps [step-num ->
+      take-step route step-num nobody
     ]
+    let dst last route
+    move-to dst
+    set success? agent-here? dst
   ]
-  ; valet-step-to-car
-  if success? [
+  report success?
+end
+
+to-report test-valet-step-to-car
+  let success? true
     setup
     let src random-road-point
     hatch-valet-at src
@@ -1155,9 +1187,11 @@ to unit-tests
         inspect one-of my-out-trips
       ]
     ]
-  ]
-  ; car-step
-  if success? [
+  report success?
+end
+
+to-report test-car-step
+  let success? true
     setup
     ; create a car linked to a customer
     ; create a valet at the car, linked to the car
@@ -1210,112 +1244,115 @@ to unit-tests
         print word "car-arrived? " car-arrived?
       ]
     ]
-  ]
-
-  ; cars-by-ascending-distance
-  if success? [
-    clear-setup
-    carowners-builder 10
-    valets-builder 1
-    ask cars [set color white]
-    let nearest-car nobody
-    ask turtle 1 [
-      let sorted-cars cars-by-ascending-distance
-      set success? length sorted-cars = count cars
-      set hidden? true
-      set color red
-      ask first sorted-cars [set color red]
-      set success? length sorted-cars = count cars
-    ]
-    if not success? [print "cars-by-ascending-distance failed"]
-  ]
-
-  ; find-nearest-customer-car
-  if success? [
-    clear-setup
-    carowners-builder 10
-    valets-builder 1
-    customers-builder 1
-    ask cars [set color white]
-    let nearest-car nobody
-    ask one-of customers [
-      set hidden? false
-      set color red
-      set nearest-car find-nearest-customer-car
-      ask nearest-car [set color red]
-    ]
-    set success? nearest-car != nobody
-    if not success? [print "find-nearest-customer-car failed"]
-  ]
-
-  ; find-nearest-valet-car
-  if success? [
-    clear-setup
-    carowners-builder 10
-    valets-builder 1
-    ask cars [
-      set color white
-      set car-route (list one-of points)
-      set valet-claimed? false
-    ]
-    let test-valet one-of valets
-    ; customer reserves a car
-    let test-car one-of cars
-    ask test-car [set car-route (list one-of points)]
-    let nearest-car nobody
-    ask test-valet [
-      set hidden? false
-      set color yellow
-      set nearest-car find-nearest-valet-car
-      set success? nearest-car != nobody
-      if success? [ask nearest-car [set color yellow]]
-    ]
-    if not success? [
-      print "find-nearest-valet-car failed"
-      ask test-car
-      [ print valet-car-reserved? self
-        print cars-by-ascending-distance
-        print filter-reserved-valet-cars cars-by-ascending-distance
-      ]
-    ]
-  ]
-
-  ; create-customer-trip,
-  if success? [
-    setup
-    let test-customer one-of customers
-    ask test-customer [
-      set success? create-customer-trip
-    ]
-    if not success? [print "create-customer-trip failed"]
-  ]
-
-  ; deliveries-available?
-  if success? [
-    ; need one car and one valet for this test
-    clear-setup
-    carowners-builder 1
-    valets-builder 1
-    let test1 true
-    let test2 true
-    let test3 true
-    let test-valet one-of valets
-    ; initially no deliveries available
-    ask test-valet [set test1 not deliveries-available?]
-    ; customer reserves a car
-    ask one-of cars [set car-route (list one-of points)]
-    ; one delivery available
-    ask test-valet [set test2 deliveries-available?]
-    ; another valet claims it
-    ask one-of cars [set valet-claimed? true]
-    ; delivery not available
-    ask test-valet [set test3 not deliveries-available?]
-    set success? test1 and test2 and test3
-    if not success? [print "deliveries-available? failed"]
- ]
-  ifelse success? [print "passed" clear-setup][print "failed"]
+  report success?
 end
 
+to-report test-cars-by-ascending-distance
+  let success? true
+  clear-setup
+  carowners-builder 10
+  valets-builder 1
+  ask cars [set color white]
+  let nearest-car nobody
+  ask turtle 1 [
+    let sorted-cars cars-by-ascending-distance
+    set success? length sorted-cars = count cars
+    set hidden? true
+    set color red
+    ask first sorted-cars [set color red]
+    set success? length sorted-cars = count cars
+  ]
+  if not success? [print "cars-by-ascending-distance failed"]
+  report success?
+end
+
+to-report test-find-nearest-customer-car
+  let success? true
+  clear-setup
+  carowners-builder 10
+  valets-builder 1
+  customers-builder 1
+  ask cars [set color white]
+  let nearest-car nobody
+  ask one-of customers [
+    set hidden? false
+    set color red
+    set nearest-car find-nearest-customer-car
+    ask nearest-car [set color red]
+  ]
+  set success? nearest-car != nobody
+  if not success? [print "find-nearest-customer-car failed"]
+  report success?
+end
+
+to-report test-find-nearest-valet-car
+  let success? true
+  clear-setup
+  carowners-builder 10
+  valets-builder 1
+  ask cars [
+    set color white
+    set car-route (list one-of points)
+    set valet-claimed? false
+  ]
+  let test-valet one-of valets
+  ; customer reserves a car
+  let test-car one-of cars
+  ask test-car [set car-route (list one-of points)]
+  let nearest-car nobody
+  ask test-valet [
+    set hidden? false
+    set color yellow
+    set nearest-car find-nearest-valet-car
+    set success? nearest-car != nobody
+    if success? [ask nearest-car [set color yellow]]
+  ]
+  if not success? [
+    print "find-nearest-valet-car failed"
+    ask test-car
+    [ print valet-car-reserved? self
+      print cars-by-ascending-distance
+      print filter-reserved-valet-cars cars-by-ascending-distance
+    ]
+  ]
+  report success?
+end
+
+to-report test-create-customer-trip
+  let success? true
+  setup
+  let test-customer one-of customers
+  ask test-customer [
+    set success? create-customer-trip
+  ]
+  if not success? [print "create-customer-trip failed"]
+  report success?
+end
+
+to-report test-deliveries-available?
+  ; need one car and one valet for this test
+  let success? true
+  clear-setup
+  carowners-builder 1
+  valets-builder 1
+  let test1 true
+  let test2 true
+  let test3 true
+  let test-valet one-of valets
+  ; initially no deliveries available
+  ask test-valet [set test1 not deliveries-available?]
+  ; customer reserves a car
+  ask one-of cars [set car-route (list one-of points)]
+  ; one delivery available
+  ask test-valet [set test2 deliveries-available?]
+  ; another valet claims it
+  ask one-of cars [set valet-claimed? true]
+  ; delivery not available
+  ask test-valet [set test3 not deliveries-available?]
+  set success? test1 and test2 and test3
+  if not success? [print "deliveries-available? failed"]
+  report success?
+end
 ;*********************************************************************************************
 ; test helpers
 ;*********************************************************************************************
