@@ -265,6 +265,7 @@ to car-step
         move-to last route
       ]
     ]
+    set color white
   ]
 end
 
@@ -398,6 +399,7 @@ to valet-step-to-car
        set color yellow - 3
        set hidden? false
      ]
+     ; tell the car to move along route
      ask car-to-deliver [
        create-trip-to current-customer [
          set trip-route route-to-customer
@@ -405,8 +407,11 @@ to valet-step-to-car
          set color yellow - 3
          set hidden? false
        ]
+       ; valet is 'driven' to customer
        set car-passenger myself
      ]
+      ; hide route-to-car
+      hide-route route
 
  ;    ; get new route from car's trip
  ;;    let car-to-deliver [other-end] of one-of my-out-trips
@@ -444,6 +449,7 @@ end
 
 ; make self available again
 to valet-delivery-complete
+  ask my-out-trips [hide-route trip-route]
   ask my-trips [die]
   set hidden? false
   set color grey
@@ -500,7 +506,8 @@ to-report create-customer-trip
 
   ; create trip to random destination
   let random-route calc-route-with-rnd-dst location
-  let random-dst last random-route
+  display-route random-route red
+;  let random-dst last random-route
 
   ; reserve the car
   ask nearest-car [
@@ -756,7 +763,7 @@ to-report xy-at-distance-on-line [ line dist ]
 end
 
 to display-route [route route-color]
-  if route != false and not empty? route [
+  if display-routes = true and route != false and not empty? route [
     let src first route
     let dst last route
     ask src [
@@ -777,21 +784,23 @@ to display-route [route route-color]
 end
 
 to hide-route [route]
-  let src first route
-  let dst last route
-  ask src [
-    set hidden? true
-    set shape ifelse-value junction? src ["square 3"]["circle 3"]
-    set color grey]
-  ask dst [
-    set hidden? true
-    set shape ifelse-value junction? src ["square 3"]["circle 3"]
-    set color grey]
-  let previous-point first route
-  foreach but-first route [current-point ->
-    let seg get-segment-between-points previous-point current-point
-    ask seg [set color grey]
-    set previous-point current-point
+  if display-routes = true [
+    let src first route
+    let dst last route
+    ask src [
+      set hidden? true
+      set shape ifelse-value junction? src ["square 3"]["circle 3"]
+      set color grey]
+    ask dst [
+      set hidden? true
+      set shape ifelse-value junction? src ["square 3"]["circle 3"]
+      set color grey]
+    let previous-point first route
+    foreach but-first route [current-point ->
+      let seg get-segment-between-points previous-point current-point
+      ask seg [set color grey]
+      set previous-point current-point
+    ]
   ]
 end
 
@@ -1651,18 +1660,33 @@ https://www.santamonica.gov/isd/gis
 7.0
 1
 
+SWITCH
+30
+215
+177
+248
+display-routes
+display-routes
+0
+1
+-1000
+
 @#$#@#$#@
 ## WHAT IS IT?
 
-(a general understanding of what the model is trying to show or explain)
+A car on demand service that allows customers to order a car, receive it within minutes, and drive anywhere with no need to return. 
+
+Demonstrate a new mode of transportation at the intersection of rideshare and car rental.
+Show profit performance when compared to rideshare and/or rental.
 
 ## HOW IT WORKS
 
-(what rules the agents use to create the overall behavior of the model)
+A CUSTOMER orders a CAR. A VALET travels to the CAR and delivers the CAR to the CUSTOMER.
+The CUSTOMER drives the CAR to a destination and pays for TRIP.
 
 ## HOW TO USE IT
 
-(how to use the model, including a description of each of the items in the Interface tab)
+Change the number of CUSTOMERS, CARS and VALETS. The CUSTOMER demand can be adjusted using trip-frequency.
 
 ## THINGS TO NOTICE
 
@@ -1678,7 +1702,7 @@ https://www.santamonica.gov/isd/gis
 
 ## NETLOGO FEATURES
 
-(interesting or unusual features of NetLogo that the model uses, particularly in the Code tab; or where workarounds were needed for missing features)
+Uses GIS extension to import a shapefile of polylines which is converted to POINTS and SEGMENTS. Uses the NW extension to calculate discover shortest routes.
 
 ## RELATED MODELS
 
