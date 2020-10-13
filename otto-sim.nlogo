@@ -200,7 +200,7 @@ to go
     [ if valet-picked-car? = false [ increment-wait 1 ] ]
     [ increment-wait 1 ]
     ; if in-delivery, scooter to car (or ride car to customer)
-    if valet-on-scooter? [valet-step-to-car]
+    if delivery-selected? [valet-step-to-car]
 ;    if valet-in-car? [valet-step-to-customer]
 ;    ; if arrived at customer, complete delivery
 ;    if valet-arrived-at-customer? [complete-delivery]
@@ -304,7 +304,7 @@ to valet-step-to-car
     create-trip-to current-customer [
       set shape "trip"
       set color yellow - 3
-      set hidden? true
+      set hidden? false
     ]
     ask car-to-deliver [
       create-trip-to current-customer [
@@ -400,22 +400,25 @@ end
 
 to-report deliveries-available?
   ; count unreserved cars that have not been claimed by valets
-  report count cars with [not valet-car-reserved? self and not valet-claimed?] > 0
+  report ifelse-value delivery-selected? [true][count cars with [not valet-car-reserved? self and not valet-claimed?] > 0]
 end
 
 to-report valet-picked-car?
-  let nearest-car find-nearest-valet-car
-  let route calc-route point-here xcor ycor [location] of nearest-car
-  ifelse route = false
-  [ report false]
-  [ create-trip-to nearest-car
-    [ set trip-route route
-      set shape "trip"
-      set color yellow - 3
-      display-route trip-route yellow
+  ifelse delivery-selected? [report true]
+  [
+    let nearest-car find-nearest-valet-car
+    let route calc-route point-here xcor ycor [location] of nearest-car
+    ifelse route = false
+    [ report false]
+    [ create-trip-to nearest-car
+      [ set trip-route route
+        set shape "trip"
+        set color yellow - 3
+        display-route trip-route yellow
+      ]
+      set color yellow
+      report true
     ]
-    set color yellow
-    report true
   ]
 end
 
@@ -1085,57 +1088,57 @@ to unit-tests
 ;      set success? agent-here? dst
 ;    ]
 ;  ]
-;  ; valet-step-to-car
-;  if success? [
-;    setup
-;    let src random-road-point
-;    hatch-valet-at src
-;    let test-valet valet valet-who-at src
-;    let route calc-route-with-rnd-dst src
-;    display-route route yellow
-;    let dst last route
-;    hatch-car-at dst
-;    let test-car car car-who-at dst
-;    let customer-location random-road-point
-;    hatch-customer-at customer-location
-;    let test-customer customer customer-who-at customer-location
-;    ; reserve the car
-;    ask test-car [
-;      set car-customer test-customer
-;      set car-route route
-;    ]
-;    ask test-valet [
-;      create-trip-to test-car
-;      [ set trip-route route
-;        set shape "trip"
-;        set color yellow - 3
-;      ]
-;      ; start moving
-;      let route-len route-distance route
-;      let num-steps round(route-len / step-length)
-;      foreach but-first range num-steps [ ->
-;        valet-step-to-car
-;      ]
-;      valet-step-to-car
-;      valet-step-to-car
-;      set success? valet-arrived-at-car?
-;      if not success? [
-;        ; sanity check
-;        let expected-car one-of cars with [car-passenger = test-valet]
-;        print (word "car " test-car " = "  expected-car)
-;        print (word "destination " dst " = " last [car-route] of expected-car)
-;        print (word "at a car? " expected-car " = "  car-here? expected-car)
-;        print (word "is a car? " expected-car " = "  is-car? expected-car)
-;        print (word "is a turtle? " expected-car " = "  is-turtle? expected-car)
-;        print (word "is agent here? " expected-car " = "  agent-here? expected-car)
-;        inspect test-customer
-;        inspect test-valet
-;        inspect test-car
-;        inspect dst
-;        inspect one-of my-out-trips
-;      ]
-;    ]
-;  ]
+  ; valet-step-to-car
+  if success? [
+    setup
+    let src random-road-point
+    hatch-valet-at src
+    let test-valet valet valet-who-at src
+    let route calc-route-with-rnd-dst src
+    display-route route yellow
+    let dst last route
+    hatch-car-at dst
+    let test-car car car-who-at dst
+    let customer-location random-road-point
+    hatch-customer-at customer-location
+    let test-customer customer customer-who-at customer-location
+    ; reserve the car
+    ask test-car [
+      set car-customer test-customer
+      set car-route route
+    ]
+    ask test-valet [
+      create-trip-to test-car
+      [ set trip-route route
+        set shape "trip"
+        set color yellow - 3
+      ]
+      ; start moving
+      let route-len route-distance route
+      let num-steps round(route-len / step-length)
+      foreach but-first range num-steps [ ->
+        valet-step-to-car
+      ]
+      valet-step-to-car
+      valet-step-to-car
+      set success? valet-arrived-at-car?
+      if not success? [
+        ; sanity check
+        let expected-car one-of cars with [car-passenger = test-valet]
+        print (word "car " test-car " = "  expected-car)
+        print (word "destination " dst " = " last [car-route] of expected-car)
+        print (word "at a car? " expected-car " = "  car-here? expected-car)
+        print (word "is a car? " expected-car " = "  is-car? expected-car)
+        print (word "is a turtle? " expected-car " = "  is-turtle? expected-car)
+        print (word "is agent here? " expected-car " = "  agent-here? expected-car)
+        inspect test-customer
+        inspect test-valet
+        inspect test-car
+        inspect dst
+        inspect one-of my-out-trips
+      ]
+    ]
+  ]
 ;  ; car-step
 ;  if success? [
 ;    setup
@@ -1208,26 +1211,26 @@ to unit-tests
 ;    set success? nearest-car != nobody
 ;    if not success? [print "find-nearest-customer-car failed"]
 ;  ]
-
-  ; find-nearest-valet-car
-  if success? [
-    setup
-    let nearest-car nobody
-    ask one-of carowners[
-      hatch-carowners 100
-    ]
-    car-creator
-    ask cars [set color white]
-    let test-valet one-of valets
-    ask test-valet [
-      set hidden? false
-      set color yellow
-      set nearest-car find-nearest-valet-car
-      ask nearest-car [set color yellow]
-    ]
-    set success? nearest-car != nobody
-    if not success? [print "find-nearest-valet-car failed"]
-  ]
+;
+;  ; find-nearest-valet-car
+;  if success? [
+;    setup
+;    let nearest-car nobody
+;    ask one-of carowners[
+;      hatch-carowners 100
+;    ]
+;    car-creator
+;    ask cars [set color white]
+;    let test-valet one-of valets
+;    ask test-valet [
+;      set hidden? false
+;      set color yellow
+;      set nearest-car find-nearest-valet-car
+;      ask nearest-car [set color yellow]
+;    ]
+;    set success? nearest-car != nobody
+;    if not success? [print "find-nearest-valet-car failed"]
+;  ]
 
 ;
 ;  ; create-customer-trip,
