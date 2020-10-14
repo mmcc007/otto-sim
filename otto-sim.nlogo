@@ -226,7 +226,7 @@ to go
     ; if route available, step towards destination, otherwise wait
     ifelse car-routed? [car-step][increment-wait 1]
     ; if arrived at destination, reset to waiting mode
-    if car-arrived? [car-idled]
+;    if car-arrived? [car-idled]
   ]
 ;
 ;  ask carowners [
@@ -453,20 +453,20 @@ end
 ; make self available again
 to valet-delivery-complete
   ask my-out-trips [hide-route trip-route]
-  ask my-trips [die]
   set hidden? false
   set color grey
-;  ; put passenger in car and enable car
-;  let current-customer one-of out-trip-neighbors
-;  let current-customer-route [trip-route] of one-of [my-out-trips] of current-customer
-;  let car-to-deliver car-with-passenger self
-;  send-car car-to-deliver current-customer-route current-customer red - 2
-;  ask my-trips [die]
+  ; put passenger in car and enable car
+  let current-customer one-of out-trip-neighbors
+  let current-customer-route [trip-route] of one-of [my-out-trips] of current-customer
+  let car-to-deliver car-with-passenger self
+  send-car car-to-deliver current-customer-route current-customer red - 2
+  ask my-trips [die]
 end
 
 ; send a car along a route
 to send-car [a-car route passenger a-color]
   ask a-car [
+    ask my-out-trips [die]
     create-trip-to last route [
       set trip-route route
       set shape "trip"
@@ -1708,7 +1708,7 @@ SWITCH
 248
 display-routes
 display-routes
-1
+0
 1
 -1000
 
