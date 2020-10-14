@@ -762,26 +762,36 @@ end
 
 ; get length of route
 to-report route-distance [route]
-  let dist 0
-  let previous-point first route
-  foreach but-first route [ current-point ->
-    let seg get-segment-between-points previous-point current-point
-    set dist dist + [seg-length] of seg
-    set previous-point current-point
-  ]
-  report dist
+  report distance-between first route last route
+;  let dist 0
+;  let previous-point first route
+;  foreach but-first route [ current-point ->
+;    let seg get-segment-between-points previous-point current-point
+;    set dist dist + [seg-length] of seg
+;    set previous-point current-point
+;  ]
+;  report dist
 end
 
 ; find segment, in the form of [src,dst,length] at [dist] along [route]
 to-report find-line-on-route [route dist]
+  let route-segs calc-route-segments first route last route
   let crnt-dist 0
   let prev first route
-  foreach but-first route [crnt ->
-    let seg-len [link-length] of get-segment-between-points prev crnt
+  (foreach route-segs (but-first route) [[seg crnt] ->
+    let seg-len [link-length] of seg
     set crnt-dist crnt-dist + seg-len
     if crnt-dist > dist [report (list prev crnt seg-len) ]
     set prev crnt
-  ]
+  ])
+
+;  let prev first route
+;  foreach but-first route [crnt ->
+;    let seg-len [link-length] of get-segment-between-points prev crnt
+;    set crnt-dist crnt-dist + seg-len
+;    if crnt-dist > dist [report (list prev crnt seg-len) ]
+;    set prev crnt
+;  ]
   report []
 end
 
@@ -821,7 +831,8 @@ to display-route [route route-color]
       set shape "square 3"
       set color route-color]
     let route-segments calc-route-segments src dst
-    foreach route-segments [seg -> ask seg [set color route-color]]
+    ask link-list-to-set route-segments [set color route-color]
+;    foreach route-segments [seg -> ask seg [set color route-color]]
 ;    let previous-point first route
 ;    foreach but-first route [current-point ->
 ;      let seg get-segment-between-points previous-point current-point
@@ -843,12 +854,15 @@ to hide-route [route]
       set hidden? true
       set shape ifelse-value junction? src ["square 3"]["circle 3"]
       set color grey]
-    let previous-point first route
-    foreach but-first route [current-point ->
-      let seg get-segment-between-points previous-point current-point
-      ask seg [set color grey]
-      set previous-point current-point
-    ]
+    let route-segments calc-route-segments src dst
+    ask link-list-to-set route-segments [set color grey]
+;    foreach route-segments [seg -> ask seg [set color grey]]
+;    let previous-point first route
+;    foreach but-first route [current-point ->
+;      let seg get-segment-between-points previous-point current-point
+;      ask seg [set color grey]
+;      set previous-point current-point
+;    ]
   ]
 end
 
@@ -963,6 +977,21 @@ to-report random-road-point
   report one-of points with [in-network? = true]
 end
 
+; here's how to convert an agentset to a list of agents:
+to-report set-to-list [a-set]
+  report [self] of a-set
+end
+
+; here's how to convert a list of agents to an agentset:
+to-report turtle-list-to-set [a-list]
+;  report turtles with [member? self a-list]
+  report turtle-set a-list
+end
+
+to-report link-list-to-set [a-list]
+;  report turtles with [member? self a-list]
+  report link-set a-list
+end
 ;*********************************************************************************************
 ; debug
 ;*********************************************************************************************
