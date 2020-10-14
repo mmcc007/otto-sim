@@ -123,6 +123,8 @@ end
 ;  all start out grey
 to setup
   clear-setup
+  ; only consider points and segments as part of a network
+  nw:set-context points segments
   set step-length .2
 
   customers-builder num-customers
@@ -391,6 +393,7 @@ to valet-step-to-car
  ;    set route [car-route] of car-to-deliver
  ;    let dst last route
      let current-customer [car-customer] of car-to-deliver
+;      print current-customer
      let route-to-customer calc-route point-here-agent self point-here-agent current-customer
      ask my-out-trips [die] ; remove existing trip to car
      create-trip-to current-customer [
@@ -453,6 +456,30 @@ to valet-delivery-complete
   ask my-trips [die]
   set hidden? false
   set color grey
+;  ; put passenger in car and enable car
+;  let current-customer one-of out-trip-neighbors
+;  let current-customer-route [trip-route] of one-of [my-out-trips] of current-customer
+;  let car-to-deliver car-with-passenger self
+;  send-car car-to-deliver current-customer-route current-customer red - 2
+;  ask my-trips [die]
+end
+
+; send a car along a route
+to send-car [a-car route passenger a-color]
+  ask a-car [
+    create-trip-to last route [
+      set trip-route route
+      set shape "trip"
+      set color a-color
+      set hidden? false
+    ]
+    if passenger != nobody [set car-passenger passenger]
+  ]
+end
+
+; get car I'm a passenger of
+to-report car-with-passenger [passenger]
+  report one-of cars with [car-passenger = passenger]
 end
 
 ;*********************************************************************************************
@@ -508,6 +535,11 @@ to-report create-customer-trip
   let random-route calc-route-with-rnd-dst location
   display-route random-route red
 ;  let random-dst last random-route
+  create-trip-to last random-route
+  [ set trip-route random-route
+    set shape "trip"
+    set color red + 0.5
+  ]
 
   ; reserve the car
   ask nearest-car [
@@ -516,6 +548,8 @@ to-report create-customer-trip
     set car-customer myself
     set color yellow
   ]
+
+
 ;  create-trip-from nearest-car
 ;  [ set trip-route route-from-car
 ;    set shape "trip"
@@ -644,6 +678,7 @@ end
 ; Plus it makes it easier to step along the route using points instead of segments
 ; and in other operations on routes.
 to-report calc-route [src dst]
+;  show (word "calc-route: " src ", " dst)
   let route false
   ask src [set route nw:turtles-on-weighted-path-to dst seg-length]
   report route
@@ -658,6 +693,7 @@ end
 ;end
 
 to-report distance-between [src dst]
+;  show (word "distance-between: " src ", " dst)
   let calc-distance 0
   ask src [set calc-distance nw:weighted-distance-to dst seg-length]
   report calc-distance
@@ -1082,16 +1118,21 @@ to unit-tests
 end
 
 to-report test-calc-route
-  let success? true
-    ; route returns first and last
-    let src random-road-point
-    let dst other-point src
+  let success? false
+  ; route returns first and last
+  let src random-road-point
+  let dst other-point src
+  ifelse is-point? src and is-point? dst [
     let route calc-route src dst
     while [route = false][
       set dst other-point src
       set route calc-route src dst
     ]
     set success? src = first route and dst = last route
+  ][
+    print (word "error src: " src ", dst: " dst)
+  ]
+  if not success? [print "calc-route failed"]
   report success?
 end
 
@@ -1667,7 +1708,7 @@ SWITCH
 248
 display-routes
 display-routes
-0
+1
 1
 -1000
 
