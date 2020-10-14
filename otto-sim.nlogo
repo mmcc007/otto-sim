@@ -203,11 +203,11 @@ to go
     if create-customer-trip?
     [if create-customer-trip = false [increment-wait 10]] ; estimated time penalty for no cars available
     ; if trip created and not delivered, wait for car
-;    if customer-waiting-for-car? [increment-wait 1]
+    if customer-waiting-for-car? [increment-wait 1]
 ;    ; if in car, take step to destination
 ;    if car-at-customer? [take-step-on-route]
     ; if arrived at destination, pay and remove trip
-;    if customer-arrived? [end-customer-trip]
+    if customer-arrived? [end-customer-trip]
   ]
 
   ask valets[
@@ -566,6 +566,8 @@ end
 
 to end-customer-trip
   ; cleanup and pay
+  let route [trip-route] of one-of my-out-links
+  hide-route route
   ask my-trips [die]
   set wait-time 0
   set hidden? true
@@ -684,6 +686,14 @@ to-report calc-route [src dst]
   report route
 end
 
+; get route in segments
+; (used to display segments)
+to-report calc-route-segments [src dst]
+  let route false
+  ask src [set route nw:weighted-path-to dst seg-length]
+  report route
+end
+
 ;to-report distance-between [src dst]
 ;  let route calc-route src dst
 ;  ; some number larger than any possible other route distance in this world
@@ -693,7 +703,7 @@ end
 ;end
 
 to-report distance-between [src dst]
-;  show (word "distance-between: " src ", " dst)
+  show (word "distance-between: " src ", " dst)
   let calc-distance 0
   ask src [set calc-distance nw:weighted-distance-to dst seg-length]
   report calc-distance
@@ -810,12 +820,14 @@ to display-route [route route-color]
       set hidden? false
       set shape "square 3"
       set color route-color]
-    let previous-point first route
-    foreach but-first route [current-point ->
-      let seg get-segment-between-points previous-point current-point
-      ask seg [set color route-color]
-      set previous-point current-point
-    ]
+    let route-segments calc-route-segments src dst
+    foreach route-segments [seg -> ask seg [set color route-color]]
+;    let previous-point first route
+;    foreach but-first route [current-point ->
+;      let seg get-segment-between-points previous-point current-point
+;      ask seg [set color route-color]
+;      set previous-point current-point
+;    ]
   ]
 end
 
