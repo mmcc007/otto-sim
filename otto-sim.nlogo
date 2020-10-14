@@ -25,7 +25,7 @@ segments-own [
 ; if not available and in service and delivered to car owner, car is taken out of service
 breed [cars car]
 cars-own [
-  speed ; mph
+;  speed ; mph
   available-by-car-owner? ; set by car-owner to add/remove fleet in service
   in-service? ; set by car-owner and used by operator
   reserved? ; when booked by a customer (or the operator)
@@ -61,6 +61,8 @@ carowners-own [owner-cars earnings]
 globals [
   city-dataset
   step-length ; miles
+  speed ; mph
+  time ; distance/speed
 ]
 
 ; called at model load
@@ -125,7 +127,9 @@ to setup
   clear-setup
   ; only consider points and segments as part of a network
   nw:set-context points segments
-  set step-length .2
+  set step-length .2 ; miles
+  set speed 20 ; mph
+  set time step-length / speed ; hours
 
   customers-builder num-customers
   valets-builder num-valets
@@ -343,6 +347,7 @@ to-report valet-picked-car
         display-route trip-route yellow
       ]
       set color yellow
+      set shape "bike"
       report true
     ]
   ]
@@ -362,6 +367,7 @@ to valet-step-to-car
    ][
      ; arrived at car
      set hidden? true ; since getting in car now
+     set shape "person"
      move-to last route ; TODO route stepper removes this
 
      ; set the car's trip to activate the car to travel to customer
@@ -389,7 +395,7 @@ to valet-step-to-car
        ; valet is 'driven' to customer
        set car-passenger myself
      ]
-      ; hide route-to-car
+      ; cleanup route-to-car
       hide-route route
     ]
   ]
@@ -508,8 +514,8 @@ end
 ;*********************************************************************************************
 
 ; may not correspond to actual time
-to increment-wait [time]
-  set wait-time wait-time + time
+to increment-wait [time-increment]
+  set wait-time wait-time + time-increment * time
 end
 
 ; a reserved car from perspective of a valet
@@ -586,6 +592,7 @@ to take-step [route step-num passenger]
   let y item 1 xy
   let end-point item 1 line
   face end-point
+  if shape = "bike"[right 90]
   setxy x y
   if passenger != nobody [
 ;    print passenger
@@ -1404,7 +1411,7 @@ num-carowners
 num-carowners
 1
 100
-1.0
+2.0
 1
 1
 NIL
@@ -1629,6 +1636,29 @@ arrow
 true
 0
 Polygon -7500403 true true 150 0 0 150 105 150 105 293 195 293 195 150 300 150
+
+bike
+true
+1
+Line -7500403 false 163 183 228 184
+Circle -7500403 false false 213 184 22
+Circle -7500403 false false 156 187 16
+Circle -16777216 false false 28 148 95
+Circle -16777216 false false 24 144 102
+Circle -16777216 false false 174 144 102
+Circle -16777216 false false 177 148 95
+Polygon -2674135 true true 75 195 90 90 98 92 97 107 192 122 207 83 215 85 202 123 211 133 225 195 165 195 164 188 214 188 202 133 94 116 82 195
+Polygon -2674135 true true 208 83 164 193 171 196 217 85
+Polygon -2674135 true true 165 188 91 120 90 131 164 196
+Line -7500403 false 159 173 170 219
+Line -7500403 false 155 172 166 172
+Line -7500403 false 166 219 177 219
+Polygon -16777216 true false 187 92 198 92 208 97 217 100 231 93 231 84 216 82 201 83 184 85
+Polygon -7500403 true false 71 86 98 93 101 85 74 81
+Rectangle -16777216 true false 75 75 75 90
+Polygon -16777216 true false 70 87 70 72 78 71 78 89
+Circle -7500403 false false 153 184 22
+Line -7500403 false 159 206 228 205
 
 box
 false
