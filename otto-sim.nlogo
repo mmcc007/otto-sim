@@ -207,7 +207,7 @@ to go
 ;    ; if in car, take step to destination
 ;    if car-at-customer? [take-step-on-route]
     ; if arrived at destination, pay and remove trip
-    if customer-arrived? [end-customer-trip]
+;    if customer-arrived? [end-customer-trip]
   ]
 
   ask valets[
@@ -268,6 +268,7 @@ to car-step
       ]
     ]
     set color white
+;    set car-step-num 0
   ]
 end
 
@@ -940,21 +941,23 @@ to build-road-network
     ]
     ; scan for and set members of road network
     ; expect member rate of greater than 94%
-    discover-network 0.94 10
+    discover-network 0.94
   ]
 end
 
 ; discover road network and mark points as members
 ; this may halt for high min member rate
-to discover-network [min-member-rate max-retries]
+to discover-network [min-member-rate]
+  let num-points count points
+  let max-retries round(num-points * (1 - min-member-rate)) + 1
   let retries 0
   while [retries < max-retries and not valid-network? min-member-rate][
     ask points [set in-network? false]
-    add-to-network one-of points
+    add-to-network one-of points false
     set retries retries + 1
   ]
   if retries = max-retries [
-    user-message (word "No network found at min member rate " min-member-rate ". \nRecommend halting. \nTry reducing min member rate or improve quality of input data.")
+    user-message (word "No network found at min member rate of " min-member-rate ". \nRecommend halting. \nTry reducing min member rate or improve quality of input data.")
   ]
 end
 
@@ -963,11 +966,13 @@ to-report valid-network? [min-member-rate]
 end
 
 ; recursively visits every point on candidate network
-to add-to-network [any-point]
-  ask any-point [
+to add-to-network [next-point show-segments?]
+  ask next-point [
     if not in-network?
     [ set in-network? true
-      ask segment-neighbors [add-to-network self]
+      if show-segments? [ask my-segments [set color red]]
+      ask segment-neighbors [
+        add-to-network self show-segments?]
     ]
   ]
 end
@@ -1033,22 +1038,19 @@ end
 ; show all segments in road network
 to show-network
   init-model
-  ; visit every other point in network
+  ask points [set in-network? false]
   while [not valid-network? 0.5][
-    let any-point random-road-point
+    let any-point one-of points
     ask any-point [
       set hidden? false
       set color yellow
     ]
     print any-point
-    add-to-network any-point
+    add-to-network any-point true
   ]
-  ; display segments
-  ask points with [in-network? = true]
-    [ask my-segments [set color red]]
-  let in-network count points with [in-network? = true]
+  let in-network-points count points with [in-network? = true]
   let total-points count points
-  print (word "found " in-network " points in network out of " total-points " (" precision (in-network / total-points * 100) 2 "%)")
+  print (word "found " in-network-points " points in network out of " total-points " (" precision (in-network-points / total-points * 100) 2 "%)")
 end
 
 ; show links connected to center-point for link-distance (debug)
@@ -1678,8 +1680,9 @@ true
 true
 "" ""
 PENS
-"C" 1.0 0 -16777216 true "" "plot mean [wait-time] of customers"
-"V" 1.0 0 -1184463 true "" "plot mean [wait-time] of valets"
+"Cu" 1.0 0 -16777216 true "" "plot mean [wait-time] of customers"
+"Va" 1.0 0 -1184463 true "" "plot mean [wait-time] of valets"
+"Ca" 1.0 0 -7500403 true "" "plot mean [wait-time] of cars"
 
 BUTTON
 75
