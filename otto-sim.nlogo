@@ -532,7 +532,7 @@ to-report customer-reserved-car
   report one-of cars with [car-pending-route = [cust-route] of myself and car-pending-route-owner = myself]
 end
 to-report customer-in-car
-  report one-of cars with [car-passenger = self]
+  report one-of cars with [car-passenger = myself]
 end
 
 
@@ -1651,8 +1651,15 @@ to-report test-full-customer-trip
   repeat 20 [tick]
   set step-length 0.2
   let test2-customer-randomly-reserve-car? false
+
+  let test-customer-reserved-car? false
+  let test-customer-in-car? false
+  let test-customer-reserved-car-arrived? false
+  let test-customer-arrived-at-destination? false
+
   ask test-customer [
     set test2-customer-randomly-reserve-car? customer-randomly-reserve-car?
+    set test-customer-reserved-car? customer-reserved-car?
   ]
   let test-valet-car-available? false
   let test-valet-claimed-car? false
@@ -1680,22 +1687,28 @@ to-report test-full-customer-trip
     set test-valet-arrived-at-customer? valet-arrived-at-customer?
   ]
   ask test-customer [
+    set test-customer-reserved-car-arrived? customer-reserved-car-arrived?
     customer-start-car
+    set test-customer-in-car? customer-in-car?
   ]
   ask test-car [
     test-helper-steps-to-dst [ -> car-step-to-destination ] nobody
     car-complete-trip
   ]
   ask test-customer [
-    set success? customer-arrived-at-destination?
+    set test-customer-arrived-at-destination? customer-arrived-at-destination?
   ]
-  set success? success? and
+  set success?
     test2-customer-randomly-reserve-car? and
     test-valet-car-available? and
     test-valet-claimed-car? and
     test-valet-arrived-at-car? and
     test-valet-in-car? and
-    test-valet-arrived-at-customer?
+    test-valet-arrived-at-customer? and
+    test-customer-reserved-car? and
+    test-customer-in-car? and
+    test-customer-reserved-car-arrived? and
+    test-customer-arrived-at-destination?
   if not success? [print "test-full-customer-trip failed"]
   report success?
 end
