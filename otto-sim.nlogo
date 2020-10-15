@@ -315,7 +315,7 @@ to-report car-in-motion?
 end
 
 to-report car-arrived-at-destination?
-  report point-here self = last [trip-route] of one-of my-out-trips
+  report point-of self = last [trip-route] of one-of my-out-trips
 end
 
 ; car state transitions/actions
@@ -364,7 +364,7 @@ to-report valet-claimed-car?
 end
 
 to-report valet-arrived-at-car?
-  report point-here self = point-here valet-claimed-car
+  report point-of self = point-of valet-claimed-car
 end
 
 to-report valet-in-car?
@@ -373,16 +373,16 @@ end
 
 to-report valet-arrived-at-customer?
   let current-customer [car-pending-route-owner] of valet-claimed-car
-  report point-here self = point-here current-customer
+  report point-of self = point-of current-customer
 end
 
 ; valet state transitions/actions
 to valet-claim-car
   set color yellow
   let easiest-car-to-deliver valet-car-available
-  let route-to-car calc-route point-here self point-here easiest-car-to-deliver
+  let route-to-car calc-route point-of self point-of easiest-car-to-deliver
   display-route route-to-car yellow
-  let route-to-customer calc-route point-here easiest-car-to-deliver point-here [car-pending-route-owner] of easiest-car-to-deliver
+  let route-to-customer calc-route point-of easiest-car-to-deliver point-of [car-pending-route-owner] of easiest-car-to-deliver
   display-route route-to-customer yellow
   ask easiest-car-to-deliver [
     set car-valet myself
@@ -414,7 +414,7 @@ to valet-start-car-to-customer
   ask my-out-trips [die]
   set hidden? true ; since getting in car now
   ask valet-claimed-car [
-    let route-to-customer calc-route point-here self point-here car-pending-route-owner
+    let route-to-customer calc-route point-of self point-of car-pending-route-owner
     display-route route-to-customer yellow
     create-trip-to car-pending-route-owner [
       set trip-route [route-to-customer] of myself
@@ -458,11 +458,11 @@ to-report customer-in-car?
 end
 
 to-report customer-reserved-car-arrived?
-  report point-here customer-reserved-car = point-here self
+  report point-of customer-reserved-car = point-of self
 end
 
 to-report customer-arrived-at-destination?
-  report last cust-route = point-here self
+  report last cust-route = point-of self
 end
 
 ; customer state transitions/actions
@@ -475,7 +475,7 @@ to-report customer-randomly-reserve-car?
     let nearest-car find-nearest-customer-car
     if nearest-car = nobody [report false]
     ; create trip to random destination
-    set cust-route calc-route-with-rnd-dst point-here self
+    set cust-route calc-route-with-rnd-dst point-of self
     display-route cust-route red
     ; reserve the car
     ask nearest-car [
@@ -651,7 +651,7 @@ to-report valet-picked-car
   ifelse delivery-selected? [report true]
   [
     let nearest-car find-nearest-valet-car
-    let route calc-route point-here self point-here nearest-car
+    let route calc-route point-of self point-of nearest-car
     ifelse route = false
     [ report false]
     [
@@ -692,7 +692,7 @@ end
 ;     ; car is currently reserved so has a route and a customer
 ;     let current-customer [car-customer] of car-to-deliver
 ;;      print current-customer
-;     let route-to-customer calc-route point-here self point-here current-customer
+;     let route-to-customer calc-route point-of self point-of current-customer
 ;     ask my-out-trips [die] ; remove existing trip to car
 ;     create-trip-to current-customer [
 ;       set trip-route route-to-customer
@@ -794,7 +794,7 @@ end
 to-report create-customer-trip
   let nearest-car find-nearest-customer-car
   if nearest-car = nobody [report false]
-  let route-from-car calc-route point-here nearest-car point-here self
+  let route-from-car calc-route point-of nearest-car point-of self
   ; create trip to random destination
 ;  let random-route calc-route-with-rnd-dst location
 ;  display-route random-route red
@@ -869,25 +869,25 @@ end
 to-report customer-closest-car [src]
   report min-one-of cars [
     ifelse-value customer-a-reserved-car? self
-    [1000000000][distance-between point-here myself point-here self]
+    [1000000000][distance-between point-of myself point-of self]
   ]
 end
 
 to-report valet-closest-car [src]
   report min-one-of cars [
     ifelse-value valet-a-reserved-car? self
-    [1000000000][distance-between point-here myself point-here self]
+    [1000000000][distance-between point-of myself point-of self]
   ]
 end
 
 ; all cars sorted by distance from current position of agent
 to-report cars-by-ascending-distance
-  let agent-point point-here-xy xcor ycor
+  let agent-point point-at xcor ycor
   ; store car distance as a list of [car distance]
   let all-car-distances []
   ask cars[
     let src agent-point
-    let dst point-here-xy xcor ycor
+    let dst point-at xcor ycor
     let distance-to-car distance-between src dst
     let car-distance list self distance-to-car
     set all-car-distances fput car-distance all-car-distances
@@ -898,11 +898,12 @@ to-report cars-by-ascending-distance
   report map [ car-distance -> item 0 car-distance ] sorted-car-distances
 end
 
+; move one step along a route
 ; TODO handle overstep
 to take-step [route step-num passenger]
   let current-distance step-num * step-length
   let line find-line-on-route route current-distance
-  ; find point on route to position car
+  ; find point on route to position self (car or valet)
   let xy xy-at-distance-on-line line step-length
   let x item 0 xy
   let y item 1 xy
@@ -966,13 +967,13 @@ to-report other-point [src]
 end
 
 ; reports road point at x,y
-to-report point-here-xy [x y]
+to-report point-at [x y]
   report one-of points with [xcor = x and ycor = y and in-network? = true] ; expect only none or one
 end
 
 ; reports the point under the agent
-to-report point-here [agent]
-  report point-here-xy [xcor] of agent [ycor] of agent
+to-report point-of [agent]
+  report point-at [xcor] of agent [ycor] of agent
 end
 ; end of pointy things section
 
@@ -984,9 +985,9 @@ to-report at-this-car? [a-potential-car]
 end
 
 ; is a customer in the same spot as calling agent?
-;to-report at-this-customer? [a-potential-customer]
-;  report is-customer? a-potential-customer and _agent-here? a-potential-customer
-;end
+to-report at-this-customer? [a-potential-customer]
+  report is-customer? a-potential-customer and _agent-here? a-potential-customer
+end
 
 ; is this agent in same spot as calling agent?
 ; should not be called directly except in this section
@@ -1379,22 +1380,19 @@ end
 
 to-report test-take-step
   let success? false
-  setup
+  clear-setup
+  set step-length 0.000000001
+  valets-builder 1
+  customers-builder 1
+  let test-valet one-of valets
+  let test-customer one-of customers
   let src a-point
-  hatch-valet-at src
-  let valet-id valet-who-at src
+  ask test-valet [move-to src]
+  ask test-customer [move-to src]
   let route calc-route-with-rnd-dst src
   display-route route yellow
-  ask valet valet-id [
-    let route-len route-distance route
-    let num-steps round(route-len / step-length)
-    foreach but-first range num-steps [step-num ->
-      take-step route step-num nobody
-    ]
-    let dst last route
-    move-to dst
-    set success? _agent-here? dst
-  ]
+  ask test-valet [take-step route 1 test-customer]
+  set success? point-of test-valet != src and point-of test-customer != src
   if not success? [print "take-step failed"]
   report success?
 end
