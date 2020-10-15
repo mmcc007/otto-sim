@@ -378,6 +378,7 @@ end
 
 ; valet state transitions/actions
 to valet-claim-car
+  set color yellow
   let easiest-car-to-deliver valet-car-available
   let route-to-car calc-route point-here-agent self point-here-agent easiest-car-to-deliver
   display-route route-to-car yellow
@@ -385,6 +386,7 @@ to valet-claim-car
   display-route route-to-customer yellow
   ask easiest-car-to-deliver [
     set car-valet myself
+    set color yellow
   ]
   create-trip-to last route-to-car [
     set trip-route route-to-car
@@ -413,6 +415,7 @@ to valet-start-car-to-customer
   set hidden? true ; since getting in car now
   ask valet-claimed-car [
     let route-to-customer calc-route point-here-agent self point-here-agent car-pending-route-owner
+    display-route route-to-customer yellow
     create-trip-to car-pending-route-owner [
       set trip-route [route-to-customer] of myself
       set shape "trip"
@@ -423,8 +426,9 @@ to valet-start-car-to-customer
 end
 
 to valet-complete-delivery
-  let current-customer [car-pending-route-owner] of valet-claimed-car
+  set color grey
   ; inform customer of delivery
+  let current-customer [car-pending-route-owner] of valet-claimed-car
   ask current-customer [
     set cust-car-delivered? true
   ]
@@ -433,7 +437,7 @@ end
 ; valet helpers
 ; todo change to nearest car with minimum combined route-from-valet-to-car plus route-from-car-to-customer
 to-report valet-car-available
-  report one-of cars with [ valet-car-reserved?]
+  report find-nearest-valet-car
 end
 to-report valet-claimed-car
   report one-of cars with [car-valet = myself]
@@ -473,16 +477,11 @@ to-report customer-randomly-reserve-car?
     ; create trip to random destination
     set cust-route calc-route-with-rnd-dst point-here-agent self
     display-route cust-route red
-    create-trip-to last cust-route
-    [ set trip-route [cust-route] of myself
-      set shape "trip"
-      set color red + 0.5
-    ]
     ; reserve the car
     ask nearest-car [
       set car-pending-route [cust-route] of myself
       set car-pending-route-owner myself
-      set color yellow
+      set color red
     ]
     set color red
     set hidden? false
@@ -493,6 +492,9 @@ end
 
 to customer-start-car
   ask customer-reserved-car [
+    set color red
+    set car-passenger myself
+    display-route car-pending-route red
 ;    set car-pending-route cust-route ; for the record
 ;    set car-pending-route-owner self ; for the record
     create-trip-to last car-pending-route [
@@ -500,7 +502,6 @@ to customer-start-car
       set shape "trip"
       set color red - 2
     ]
-    set car-passenger myself
   ]
   set hidden? true ; since in car now
 end
@@ -1647,11 +1648,15 @@ to-report test-full-customer-trip
     test-helper-car-steps-to-dst
     car-complete-trip
   ]
+  ask test-valet [
+    valet-complete-delivery
+  ]
   ask test-customer [
     customer-start-car
   ]
   ask test-car [
     test-helper-car-steps-to-dst
+    car-complete-trip
   ]
   ask test-customer [
     set success? customer-arrived-at-destination?
