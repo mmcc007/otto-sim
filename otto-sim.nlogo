@@ -1416,12 +1416,13 @@ to-report test-valet-step-to-car
     ]
     ; start moving
     let route-len route-distance route
-    let num-steps round(route-len / step-length)
-    foreach but-first range num-steps [ ->
-      valet-step-to-car
-    ]
-    valet-step-to-car
-    valet-step-to-car
+    test-helper-steps-to-dst [ -> valet-step-to-car] route-len
+;    let num-steps round(route-len / step-length)
+;    foreach but-first range num-steps [ ->
+;      valet-step-to-car
+;    ]
+;    valet-step-to-car
+;    valet-step-to-car
     set success? valet-arrived-at-car?
     if not success? [
       ; sanity check
@@ -1483,12 +1484,7 @@ to-report test-car-step
   ask test-car [
     set car-passenger test-valet
     let route-length route-distance route-to-customer
-    let num-steps round(route-length / step-length)
-    foreach but-first range num-steps [ ->
-      car-step
-    ]
-    car-step
-    car-step
+    test-helper-steps-to-dst [ -> car-step-to-destination] route-length
     let valet-arrived? false
     ask test-valet [set valet-arrived? valet-arrived-at-customer?]
 
@@ -1634,18 +1630,14 @@ to-report test-full-customer-trip
   ]
   ask test-valet [
     valet-claim-car
+    ; move valet to car
+    test-helper-steps-to-dst [ -> valet-step-to-car ] nobody
     ; start moving to car
-    let route-len route-distance [trip-route] of one-of my-out-links
-    let num-steps round(route-len / step-length)
-    foreach but-first range num-steps [ ->
-      valet-step-to-car
-    ]
-    valet-step-to-car
-    valet-step-to-car
     valet-start-car-to-customer
   ]
   ask test-car [
-    test-helper-car-steps-to-dst
+    ; move car to destination
+    test-helper-steps-to-dst [ -> car-step-to-destination ] nobody
     car-complete-trip
   ]
   ask test-valet [
@@ -1655,7 +1647,7 @@ to-report test-full-customer-trip
     customer-start-car
   ]
   ask test-car [
-    test-helper-car-steps-to-dst
+    test-helper-steps-to-dst [ -> car-step-to-destination ] nobody
     car-complete-trip
   ]
   ask test-customer [
@@ -1668,15 +1660,19 @@ end
 ;*********************************************************************************************
 ; test helpers
 ;*********************************************************************************************
-to test-helper-car-steps-to-dst
-  let route-len route-distance [trip-route] of one-of my-out-links
-  let num-steps round(route-len / step-length)
-  foreach but-first range num-steps [ ->
-    car-step-to-destination
+to test-helper-steps-to-dst [step-command route-length]
+  let route-len 0
+  ifelse route-length = nobody [
+    set route-len route-distance [trip-route] of one-of my-out-links
+  ][
+    set route-len route-length
   ]
-  car-step-to-destination
-  car-step-to-destination
+  let num-steps round(route-len / step-length) + 2 ; add 2 since num-steps needs min of 2
+  foreach but-first range num-steps [run step-command]
+;  run step-command
+;  run step-command
 end
+
 ; num within range inclusive
 to-report num-within-range? [num range-min range-max]
   report num >= range-min and num <= range-max
