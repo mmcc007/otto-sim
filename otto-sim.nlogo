@@ -380,7 +380,7 @@ to-report valet-arrived-at-car?
 end
 
 to-report valet-in-car?
-  report one-of cars with [car-passenger = self] != nobody
+  report one-of cars with [car-passenger = myself] != nobody
 end
 
 to-report valet-arrived-at-customer?
@@ -1662,10 +1662,13 @@ to-report test-full-customer-trip
   ask test-valet [
     valet-claim-car
     set test-valet-car-available? not valet-car-available?
+    set test-valet-claimed-car? valet-claimed-car?
     ; move valet to car
     test-helper-steps-to-dst [ -> valet-step-to-car ] nobody
+    set test-valet-arrived-at-car? valet-arrived-at-car?
     ; start moving to car
     valet-start-car-to-customer
+    set test-valet-in-car? valet-in-car?
   ]
   ask test-car [
     ; move car to destination
@@ -1674,6 +1677,7 @@ to-report test-full-customer-trip
   ]
   ask test-valet [
     valet-complete-delivery
+    set test-valet-arrived-at-customer? valet-arrived-at-customer?
   ]
   ask test-customer [
     customer-start-car
@@ -1687,7 +1691,11 @@ to-report test-full-customer-trip
   ]
   set success? success? and
     test2-customer-randomly-reserve-car? and
-    test-valet-car-available?
+    test-valet-car-available? and
+    test-valet-claimed-car? and
+    test-valet-arrived-at-car? and
+    test-valet-in-car? and
+    test-valet-arrived-at-customer?
   if not success? [print "test-full-customer-trip failed"]
   report success?
 end
