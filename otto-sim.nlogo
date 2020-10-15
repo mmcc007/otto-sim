@@ -391,6 +391,7 @@ end
 ; valet state transitions/actions
 to valet-claim-car
   set color yellow
+  set size 0.75
   ask one-of bikes with [bike-owner = myself] [set hidden? false]
   let easiest-car-to-deliver valet-car-available
   let route-to-car calc-route point-of self point-of easiest-car-to-deliver
@@ -426,6 +427,7 @@ end
 to valet-start-car-to-customer
   ask my-out-trips [die]
   set hidden? true ; since getting in car now
+  set size 1
   ask one-of bikes with [bike-owner = myself] [set hidden? true]
   ask valet-claimed-car [
     let route-to-customer calc-route point-of self point-of car-pending-route-owner
