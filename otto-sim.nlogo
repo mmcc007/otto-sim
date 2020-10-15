@@ -196,7 +196,7 @@ to valets-builder [num]
     set valet-step-num 0
     set wait-time 0
     hatch-bikes 1 [
-      set shape "bike"
+      set shape "wheels"
       set color yellow
       set hidden? true
       set bike-owner myself
@@ -391,7 +391,7 @@ end
 ; valet state transitions/actions
 to valet-claim-car
   set color yellow
-  set size 0.75
+;  set size 0.75
   ask one-of bikes with [bike-owner = myself] [set hidden? false]
   let easiest-car-to-deliver valet-car-available
   let route-to-car calc-route point-of self point-of easiest-car-to-deliver
@@ -427,7 +427,7 @@ end
 to valet-start-car-to-customer
   ask my-out-trips [die]
   set hidden? true ; since getting in car now
-  set size 1
+;  set size 1
   ask one-of bikes with [bike-owner = myself] [set hidden? true]
   ask valet-claimed-car [
     let route-to-customer calc-route point-of self point-of car-pending-route-owner
@@ -679,7 +679,7 @@ end
 ;;        display-route trip-route yellow
 ;;      ]
 ;      set color yellow
-;      set shape "bike"
+;      set shape "wheels"
 ;      report true
 ;    ]
 ;  ]
@@ -925,7 +925,7 @@ to take-step [route step-num passenger]
   let y item 1 xy
   let end-point item 1 line
   face end-point
-  if shape = "bike"[right 90]
+;  if shape = "wheels"[right 90]
   setxy x y
   if passenger != nobody [
 ;    print passenger
@@ -1650,11 +1650,18 @@ to-report test-full-customer-trip
   reset-ticks
   repeat 20 [tick]
   set step-length 0.2
+  let test2-customer-randomly-reserve-car? false
   ask test-customer [
-    print (word "trip reserved? " customer-randomly-reserve-car?)
+    set test2-customer-randomly-reserve-car? customer-randomly-reserve-car?
   ]
+  let test-valet-car-available? false
+  let test-valet-claimed-car? false
+  let test-valet-arrived-at-car? false
+  let test-valet-in-car? false
+  let test-valet-arrived-at-customer? false
   ask test-valet [
     valet-claim-car
+    set test-valet-car-available? not valet-car-available?
     ; move valet to car
     test-helper-steps-to-dst [ -> valet-step-to-car ] nobody
     ; start moving to car
@@ -1678,6 +1685,9 @@ to-report test-full-customer-trip
   ask test-customer [
     set success? customer-arrived-at-destination?
   ]
+  set success? success? and
+    test2-customer-randomly-reserve-car? and
+    test-valet-car-available?
   if not success? [print "test-full-customer-trip failed"]
   report success?
 end
@@ -2039,29 +2049,6 @@ true
 0
 Polygon -7500403 true true 150 0 0 150 105 150 105 293 195 293 195 150 300 150
 
-bike
-true
-1
-Circle -2674135 false true 54 24 102
-Line -7500403 false 117 163 116 228
-Circle -7500403 false false 94 213 22
-Circle -7500403 false false 97 156 16
-Circle -2674135 false true 57 28 95
-Circle -2674135 false true 54 174 102
-Circle -2674135 false true 57 177 95
-Polygon -2674135 true true 105 75 210 90 208 98 193 97 178 192 217 207 215 215 177 202 167 211 105 225 105 165 112 164 112 214 167 202 184 94 105 82
-Polygon -2674135 true true 217 208 107 164 104 171 215 217
-Polygon -2674135 true true 112 165 180 91 169 90 104 164
-Line -7500403 false 127 159 81 170
-Line -7500403 false 128 155 128 166
-Line -7500403 false 81 166 81 177
-Polygon -2674135 true true 208 187 208 198 203 208 200 217 207 231 216 231 218 216 217 201 215 184
-Polygon -2674135 true true 214 71 207 98 215 101 219 74
-Rectangle -16777216 true false 210 75 225 75
-Polygon -2674135 true true 213 70 228 70 229 78 211 78
-Circle -7500403 false false 94 153 22
-Line -7500403 false 94 159 95 228
-
 box
 false
 0
@@ -2363,6 +2350,14 @@ Line -7500403 true 216 40 79 269
 Line -7500403 true 40 84 269 221
 Line -7500403 true 40 216 269 79
 Line -7500403 true 84 40 221 269
+
+wheels
+true
+0
+Circle -7500403 false true 86 11 127
+Circle -7500403 false true 86 161 127
+Circle -7500403 false true 88 13 122
+Circle -7500403 false true 88 163 122
 
 wolf
 false
