@@ -186,7 +186,7 @@ to valets-builder [num]
     set shape "person"
     let point-x a-point
     setxy [xcor] of point-x [ycor] of point-x
-    set valet-available? false
+    set valet-available? true
     set valet-car nobody
 ;    set valet-route-to-car []
     set valet-route-to-customer []
@@ -327,6 +327,7 @@ to-report car-in-motion?
 end
 
 to-report car-arrived-at-destination?
+  if count my-out-trips = 0 [report false]
   report point-of self = last [trip-route] of one-of my-out-trips
 end
 
@@ -368,7 +369,7 @@ end
 
 ; valet states
 to-report valet-car-available?
-  report valet-car-available != nobody
+  report one-of cars with [valet-a-reserved-car? self]  != nobody
 end
 
 to-report valet-claimed-car?
@@ -898,11 +899,10 @@ end
 
 ; all cars sorted by distance from current position of agent
 to-report cars-by-ascending-distance
-  let agent-point point-at xcor ycor
+  let src point-at xcor ycor
   ; store car distance as a list of [car distance]
   let all-car-distances []
   ask cars[
-    let src agent-point
     let dst point-at xcor ycor
     let distance-to-car distance-between src dst
     let car-distance list self distance-to-car
@@ -1207,6 +1207,32 @@ end
 ;*********************************************************************************************
 ; debug
 ;*********************************************************************************************
+
+; report current customer, valet and car states
+to report-states
+  clear-output
+  ask one-of customers [
+    output-print "Customer States:"
+    output-print (word "  customer-reserved-car?: \t\t" (customer-reserved-car? = true))
+    output-print (word "  customer-in-car?: \t\t\t" (customer-in-car? = true))
+    output-print (word "  customer-reserved-car-arrived?: \t" (customer-reserved-car-arrived? = true))
+    output-print (word "  customer-arrived-at-destination?: \t" (customer-arrived-at-destination? = true))
+  ]
+  ask one-of valets[
+    output-print "Valet States:"
+    output-print (word "  valet-car-available?: \t\t" (valet-car-available? = true))
+    output-print (word "  valet-claimed-car?: \t\t\t" (valet-claimed-car? = true))
+    output-print (word "  valet-arrived-at-car?: \t\t" (valet-arrived-at-car? = true))
+    output-print (word "  valet-in-car?: \t\t\t" (valet-in-car? = true))
+    output-print (word "  valet-arrived-at-customer?: \t\t" (valet-arrived-at-customer? = true))
+  ]
+  ask one-of cars [
+    output-print "Car States:"
+    output-print (word "  car-reserved?: \t\t\t" (car-reserved? = true))
+    output-print (word "  car-in-motion?: \t\t\t" (car-in-motion? = true))
+    output-print (word "  car-arrived-at-destination?: \t\t" (car-arrived-at-destination? = true))
+  ]
+end
 
 to show-route
   ; get two random points and calculate route
@@ -2021,6 +2047,13 @@ display-routes
 0
 1
 -1000
+
+OUTPUT
+1025
+255
+1350
+630
+11
 
 @#$#@#$#@
 ## WHAT IS IT?
