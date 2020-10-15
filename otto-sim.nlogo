@@ -161,8 +161,8 @@ to customers-builder [num]
     set hidden? true
     set color grey
     set shape "person"
-    let a-point random-road-point
-    setxy [xcor] of a-point [ycor] of a-point
+    let point-x a-point
+    setxy [xcor] of point-x [ycor] of point-x
     set cust-active? true
     set cust-reserved-car nobody
     set cust-route []
@@ -178,8 +178,8 @@ to valets-builder [num]
   create-valets num [
     set color grey
     set shape "person"
-    let a-point random-road-point
-    setxy [xcor] of a-point [ycor] of a-point
+    let point-x a-point
+    setxy [xcor] of point-x [ycor] of point-x
     set valet-available? false
     set valet-car nobody
 ;    set valet-route-to-car []
@@ -197,8 +197,8 @@ to carowners-builder [num]
     set hidden? true
     set color grey
     set shape "person"
-    let a-point random-road-point
-    setxy [xcor] of a-point [ycor] of a-point
+    let point-x a-point
+    setxy [xcor] of point-x [ycor] of point-x
     cars-builder 1 ; each car owner has one car (for now)
     set carowner-cars []
     set carowner-earnings 0
@@ -211,8 +211,8 @@ to cars-builder [num]
     set color grey
     set shape "car top"
     set hidden? false
-    let a-point random-road-point
-    setxy [xcor] of a-point [ycor] of a-point
+    let point-x a-point
+    setxy [xcor] of point-x [ycor] of point-x
     set car-available-by-car-owner? true
     set car-in-service? true
     set car-owner myself
@@ -597,7 +597,7 @@ end
 ; check if current position is destination
 to-report car-arrived?
   ; route destination is always either a customer, valet, or carowner
-  report car-routed? and agent-here? last [trip-route] of one-of my-out-trips ; car has one out-going trip
+  report car-routed? and _agent-here? last [trip-route] of one-of my-out-trips ; car has one out-going trip
 end
 
 ; reset to waiting mode
@@ -632,7 +632,7 @@ end
 
 ; check if current position is destination (and a car)
 ;to-report valet-arrived-at-car?
-;  report delivery-selected? and car-here? one-of cars with [car-passenger = myself]
+;  report delivery-selected? and at-this-car? one-of cars with [car-passenger = myself]
 ;end
 
 ; is valet and customer in same place with car?
@@ -643,7 +643,7 @@ end
 ;  ; valet is a passenger in car
 ;  let car-to-deliver one-of cars with [car-passenger = myself]
 ;;  print word "car-to-deliver " car-to-deliver
-;  report delivery-selected? and at-customer? current-customer and car-here? car-to-deliver
+;  report delivery-selected? and at-customer? current-customer and at-this-car? car-to-deliver
 ;end
 
 ; this is a command that returns true/false
@@ -772,7 +772,7 @@ end
 to-report car-at-customer?
   ifelse customer-trip-created? [
     let my-car customer-reserved-car
-    report car-here? my-car
+    report at-this-car? my-car
   ][report false]
 end
 
@@ -786,7 +786,7 @@ to-report customer-arrived?
   ifelse customer-trip-created? [
     let my-route [trip-route] of one-of my-trips
     let dst last my-route
-    report agent-here? dst
+    report _agent-here? dst
   ][report false]
 end
 
@@ -946,46 +946,58 @@ to-report distance-between [src dst]
   report calc-distance
 end
 
+; get length of route
+to-report route-distance [route]
+  report distance-between first route last route
+end
+
+; start of pointy things section
+
+; get a random road network point
+to-report a-point
+  report one-of points with [in-network? = true]
+end
+
+; guarantee a different point
+to-report other-point [src]
+  let dst a-point
+  while [src = dst] [set dst a-point]
+  report dst
+end
+
 ; reports road point at x,y
 to-report point-here-xy [x y]
   report one-of points with [xcor = x and ycor = y and in-network? = true] ; expect only none or one
 end
 
-; point of agent
+; reports the point under the agent
 to-report point-here [agent]
   report point-here-xy [xcor] of agent [ycor] of agent
 end
+; end of pointy things section
 
-; is a car in the same spot as this agent?
-to-report car-here? [a-car]
-  report is-car? a-car and agent-here? a-car
+; start of breed type checking section
+
+; is a car in the same spot as calling agent?
+to-report at-this-car? [a-potential-car]
+  report is-car? a-potential-car and _agent-here? a-potential-car
 end
 
-; is a customer in the same spot as this agent?
-to-report at-customer? [a-customer]
-  report is-customer? a-customer and agent-here? a-customer
-end
+; is a customer in the same spot as calling agent?
+;to-report at-this-customer? [a-potential-customer]
+;  report is-customer? a-potential-customer and _agent-here? a-potential-customer
+;end
 
-; is this agent here?
-to-report agent-here? [agent]
+; is this agent in same spot as calling agent?
+; should not be called directly except in this section
+to-report _agent-here? [agent]
   report xcor = [xcor] of agent and ycor = [ycor] of agent
 end
+; end of breed type checking section
 
 ; find a random route
 to-report calc-route-with-rnd-dst [src]
   report calc-route src other-point src
-end
-
-; guarantee a different point
-to-report other-point [src]
-  let dst random-road-point
-  while [src = dst] [set dst random-road-point]
-  report dst
-end
-
-; get length of route
-to-report route-distance [route]
-  report distance-between first route last route
 end
 
 ; find segment, in the form of [src,dst,length] at [dist] along [route]
@@ -1053,8 +1065,8 @@ to hide-route [route]
 end
 
 ; point is a junction if it has more than 2 segments
-to-report junction? [a-point]
-  report count [my-segments] of a-point > 2
+to-report junction? [point-x]
+  report count [my-segments] of point-x > 2
 end
 
 ; Load network of GIS polyline data into points connected by segments.
@@ -1159,11 +1171,6 @@ to add-to-network [next-point show-segments?]
   ]
 end
 
-; get a random road network point
-to-report random-road-point
-  report one-of points with [in-network? = true]
-end
-
 ; here's how to convert an agentset to a list of agents:
 to-report set-to-list [a-set]
   report [self] of a-set
@@ -1190,7 +1197,7 @@ to show-route
     set hidden? true
     set color grey]
   ask segments with [color = red] [set color gray]
-  let src random-road-point
+  let src a-point
   let dst other-point src
   let route calc-route src dst
   if route != false [display-route route red]
@@ -1201,7 +1208,7 @@ to show-route-using-points
   set hidden? true
   set color grey]
   ask segments with [color = red] [set color gray]
-  let src random-road-point
+  let src a-point
   let dst other-point src
   let route calc-route src dst
   display-route route red
@@ -1313,7 +1320,7 @@ end
 to-report test-calc-route
   let success? false
   ; route returns first and last
-  let src random-road-point
+  let src a-point
   let dst other-point src
   ifelse is-point? src and is-point? dst [
     let route calc-route src dst
@@ -1331,7 +1338,7 @@ end
 
 to-report test-display-route
   let success? false
-  let src random-road-point
+  let src a-point
   let route calc-route-with-rnd-dst src
   display-route route red
   set success? ([my-links] of src) with [color = red] != nobody
@@ -1342,7 +1349,7 @@ end
 
 to-report test-route-distance
   let success? false
-  let src random-road-point
+  let src a-point
   let route calc-route-with-rnd-dst src
   set success? route-distance route > 0
   if not success? [print "route-distance failed"]
@@ -1351,7 +1358,7 @@ end
 
 to-report test-find-line-on-route
   let success? false
-  let src random-road-point
+  let src a-point
   let route calc-route-with-rnd-dst src
   let line find-line-on-route route 0.0000000001
   set success? length line = 3 and item 0 line != nobody and item 1 line != nobody and item 2 line > 0
@@ -1361,7 +1368,7 @@ end
 
 to-report test-xy-at-distance-on-line
   let success? false
-  let src random-road-point
+  let src a-point
   let dst other-point src
   let line (list src dst 0.0000000001)
   let xy xy-at-distance-on-line line 0.0000000001
@@ -1373,7 +1380,7 @@ end
 to-report test-take-step
   let success? false
   setup
-  let src random-road-point
+  let src a-point
   hatch-valet-at src
   let valet-id valet-who-at src
   let route calc-route-with-rnd-dst src
@@ -1386,7 +1393,7 @@ to-report test-take-step
     ]
     let dst last route
     move-to dst
-    set success? agent-here? dst
+    set success? _agent-here? dst
   ]
   if not success? [print "take-step failed"]
   report success?
@@ -1397,7 +1404,7 @@ to-report test-valet-step-to-car
   ; the stepper looks for the route on the trip link
   let success? false
   setup
-  let src random-road-point
+  let src a-point
   hatch-valet-at src
   let test-valet valet valet-who-at src
   let route calc-route-with-rnd-dst src
@@ -1405,7 +1412,7 @@ to-report test-valet-step-to-car
   let dst last route
   hatch-car-at dst
   let test-car car car-who-at dst
-;  let customer-location random-road-point
+;  let customer-location a-point
 ;  hatch-customer-at customer-location
 ;  let test-customer customer-who-at customer-location
   ; reserve the car
@@ -1436,10 +1443,10 @@ to-report test-valet-step-to-car
       let expected-car one-of cars with [car-passenger = test-valet]
       print (word "car " test-car " = "  expected-car)
       print (word "destination " dst " = " last [car-pending-route] of expected-car)
-      print (word "at a car? " expected-car " = "  car-here? expected-car)
+      print (word "at a car? " expected-car " = "  at-this-car? expected-car)
       print (word "is a car? " expected-car " = "  is-car? expected-car)
       print (word "is a turtle? " expected-car " = "  is-turtle? expected-car)
-      print (word "is agent here? " expected-car " = "  agent-here? expected-car)
+      print (word "is agent here? " expected-car " = "  _agent-here? expected-car)
 ;      inspect test-customer
       inspect test-valet
       inspect test-car
@@ -1456,7 +1463,7 @@ to-report test-car-step
   ; create a car linked to a customer
   ; create a valet at the car, linked to the car
   ; car drives valet, as a 'passenger' to customer
-  let src random-road-point
+  let src a-point
   let route-to-customer calc-route-with-rnd-dst src
   let dst last route-to-customer
   hatch-customer-at dst
@@ -1561,7 +1568,7 @@ to-report test-find-nearest-valet-car
   ; make all cars available to valet
   ask cars [
     set color white
-    set car-pending-route (list random-road-point)
+    set car-pending-route (list a-point)
     set car-pending-route-owner test-valet
     set car-valet nobody
   ]
@@ -1685,27 +1692,27 @@ to-report num-within-range? [num range-min range-max]
   report num >= range-min and num <= range-max
 end
 
-to hatch-valet-at [a-point]
+to hatch-valet-at [point-x]
   ask one-of valets [hatch-valets 1 [
-      setxy [xcor] of a-point [ycor] of a-point
+      setxy [xcor] of point-x [ycor] of point-x
       set color yellow
       set hidden? false
     ]
   ]
 end
 
-to hatch-car-at [a-point]
+to hatch-car-at [point-x]
   ask one-of cars [hatch-cars 1 [
-      setxy [xcor] of a-point [ycor] of a-point
+      setxy [xcor] of point-x [ycor] of point-x
       set color yellow
 ;      set hidden? false
     ]
   ]
 end
 
-to hatch-customer-at [a-point]
+to hatch-customer-at [point-x]
   ask one-of customers [hatch-customers 1 [
-      setxy [xcor] of a-point [ycor] of a-point
+      setxy [xcor] of point-x [ycor] of point-x
       set color red
       set hidden? false
     ]
