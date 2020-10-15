@@ -315,7 +315,7 @@ to-report car-in-motion?
 end
 
 to-report car-arrived-at-destination?
-  report point-here-agent self = last [trip-route] of one-of my-out-trips
+  report point-here self = last [trip-route] of one-of my-out-trips
 end
 
 ; car state transitions/actions
@@ -364,7 +364,7 @@ to-report valet-claimed-car?
 end
 
 to-report valet-arrived-at-car?
-  report point-here-agent self = point-here-agent valet-claimed-car
+  report point-here self = point-here valet-claimed-car
 end
 
 to-report valet-in-car?
@@ -373,16 +373,16 @@ end
 
 to-report valet-arrived-at-customer?
   let current-customer [car-pending-route-owner] of valet-claimed-car
-  report point-here-agent self = point-here-agent current-customer
+  report point-here self = point-here current-customer
 end
 
 ; valet state transitions/actions
 to valet-claim-car
   set color yellow
   let easiest-car-to-deliver valet-car-available
-  let route-to-car calc-route point-here-agent self point-here-agent easiest-car-to-deliver
+  let route-to-car calc-route point-here self point-here easiest-car-to-deliver
   display-route route-to-car yellow
-  let route-to-customer calc-route point-here-agent easiest-car-to-deliver point-here-agent [car-pending-route-owner] of easiest-car-to-deliver
+  let route-to-customer calc-route point-here easiest-car-to-deliver point-here [car-pending-route-owner] of easiest-car-to-deliver
   display-route route-to-customer yellow
   ask easiest-car-to-deliver [
     set car-valet myself
@@ -414,7 +414,7 @@ to valet-start-car-to-customer
   ask my-out-trips [die]
   set hidden? true ; since getting in car now
   ask valet-claimed-car [
-    let route-to-customer calc-route point-here-agent self point-here-agent car-pending-route-owner
+    let route-to-customer calc-route point-here self point-here car-pending-route-owner
     display-route route-to-customer yellow
     create-trip-to car-pending-route-owner [
       set trip-route [route-to-customer] of myself
@@ -458,11 +458,11 @@ to-report customer-in-car?
 end
 
 to-report customer-reserved-car-arrived?
-  report point-here-agent customer-reserved-car = point-here-agent self
+  report point-here customer-reserved-car = point-here self
 end
 
 to-report customer-arrived-at-destination?
-  report last cust-route = point-here-agent self
+  report last cust-route = point-here self
 end
 
 ; customer state transitions/actions
@@ -475,7 +475,7 @@ to-report customer-randomly-reserve-car?
     let nearest-car find-nearest-customer-car
     if nearest-car = nobody [report false]
     ; create trip to random destination
-    set cust-route calc-route-with-rnd-dst point-here-agent self
+    set cust-route calc-route-with-rnd-dst point-here self
     display-route cust-route red
     ; reserve the car
     ask nearest-car [
@@ -651,7 +651,7 @@ to-report valet-picked-car
   ifelse delivery-selected? [report true]
   [
     let nearest-car find-nearest-valet-car
-    let route calc-route point-here-agent self point-here-agent nearest-car
+    let route calc-route point-here self point-here nearest-car
     ifelse route = false
     [ report false]
     [
@@ -692,7 +692,7 @@ end
 ;     ; car is currently reserved so has a route and a customer
 ;     let current-customer [car-customer] of car-to-deliver
 ;;      print current-customer
-;     let route-to-customer calc-route point-here-agent self point-here-agent current-customer
+;     let route-to-customer calc-route point-here self point-here current-customer
 ;     ask my-out-trips [die] ; remove existing trip to car
 ;     create-trip-to current-customer [
 ;       set trip-route route-to-customer
@@ -794,7 +794,7 @@ end
 to-report create-customer-trip
   let nearest-car find-nearest-customer-car
   if nearest-car = nobody [report false]
-  let route-from-car calc-route point-here-agent nearest-car point-here-agent self
+  let route-from-car calc-route point-here nearest-car point-here self
   ; create trip to random destination
 ;  let random-route calc-route-with-rnd-dst location
 ;  display-route random-route red
@@ -869,25 +869,25 @@ end
 to-report customer-closest-car [src]
   report min-one-of cars [
     ifelse-value customer-a-reserved-car? self
-    [1000000000][distance-between point-here-agent myself point-here-agent self]
+    [1000000000][distance-between point-here myself point-here self]
   ]
 end
 
 to-report valet-closest-car [src]
   report min-one-of cars [
     ifelse-value valet-a-reserved-car? self
-    [1000000000][distance-between point-here-agent myself point-here-agent self]
+    [1000000000][distance-between point-here myself point-here self]
   ]
 end
 
 ; all cars sorted by distance from current position of agent
 to-report cars-by-ascending-distance
-  let agent-point point-here xcor ycor
+  let agent-point point-here-xy xcor ycor
   ; store car distance as a list of [car distance]
   let all-car-distances []
   ask cars[
     let src agent-point
-    let dst point-here xcor ycor
+    let dst point-here-xy xcor ycor
     let distance-to-car distance-between src dst
     let car-distance list self distance-to-car
     set all-car-distances fput car-distance all-car-distances
@@ -947,13 +947,13 @@ to-report distance-between [src dst]
 end
 
 ; reports road point at x,y
-to-report point-here [x y]
-  report one-of points with [xcor = x and ycor = y] ; expect only none or one
+to-report point-here-xy [x y]
+  report one-of points with [xcor = x and ycor = y and in-network? = true] ; expect only none or one
 end
 
 ; point of agent
-to-report point-here-agent [agent]
-  report point-here [xcor] of agent [ycor] of agent
+to-report point-here [agent]
+  report point-here-xy [xcor] of agent [ycor] of agent
 end
 
 ; is a car in the same spot as this agent?
@@ -1330,43 +1330,48 @@ to-report test-calc-route
 end
 
 to-report test-display-route
-  let success? true
-    let src random-road-point
-    let route calc-route-with-rnd-dst src
-    display-route route red
-    hide-route route
+  let success? false
+  let src random-road-point
+  let route calc-route-with-rnd-dst src
+  display-route route red
+  set success? ([my-links] of src) with [color = red] != nobody
+  if not success? [print "display-route failed"]
+  hide-route route
   report success?
 end
 
 to-report test-route-distance
-  let success? true
-    let src random-road-point
-    let route calc-route-with-rnd-dst src
-    set success? route-distance route > 0
+  let success? false
+  let src random-road-point
+  let route calc-route-with-rnd-dst src
+  set success? route-distance route > 0
+  if not success? [print "route-distance failed"]
   report success?
 end
 
 to-report test-find-line-on-route
-  let success? true
-    let src random-road-point
-    let route calc-route-with-rnd-dst src
-    let line find-line-on-route route 0.0000000001
-    set success? length line = 3 and item 0 line != nobody and item 1 line != nobody and item 2 line > 0
+  let success? false
+  let src random-road-point
+  let route calc-route-with-rnd-dst src
+  let line find-line-on-route route 0.0000000001
+  set success? length line = 3 and item 0 line != nobody and item 1 line != nobody and item 2 line > 0
+  if not success? [print "find-line-on-route failed"]
   report success?
 end
 
 to-report test-xy-at-distance-on-line
-  let success? true
-    let src random-road-point
-    let dst other-point src
-    let line (list src dst 0.0000000001)
-    let xy xy-at-distance-on-line line 0.0000000001
-    set success? num-within-range? item 0 xy min-pxcor max-pxcor and num-within-range? item 1 xy min-pycor max-pycor
+  let success? false
+  let src random-road-point
+  let dst other-point src
+  let line (list src dst 0.0000000001)
+  let xy xy-at-distance-on-line line 0.0000000001
+  set success? num-within-range? item 0 xy min-pxcor max-pxcor and num-within-range? item 1 xy min-pycor max-pycor
+  if not success? [print "fxy-at-distance-on-line failed"]
   report success?
 end
 
 to-report test-take-step
-  let success? true
+  let success? false
   setup
   let src random-road-point
   hatch-valet-at src
@@ -1383,13 +1388,14 @@ to-report test-take-step
     move-to dst
     set success? agent-here? dst
   ]
+  if not success? [print "take-step failed"]
   report success?
 end
 
 to-report test-valet-step-to-car
   ; create a trip link on the valet
   ; the stepper looks for the route on the trip link
-  let success? true
+  let success? false
   setup
   let src random-road-point
   hatch-valet-at src
@@ -1425,6 +1431,7 @@ to-report test-valet-step-to-car
 ;    valet-step-to-car
     set success? valet-arrived-at-car?
     if not success? [
+      print "valet-step-to-car failed"
       ; sanity check
       let expected-car one-of cars with [car-passenger = test-valet]
       print (word "car " test-car " = "  expected-car)
@@ -1444,7 +1451,7 @@ to-report test-valet-step-to-car
 end
 
 to-report test-car-step
-  let success? true
+  let success? false
   setup
   ; create a car linked to a customer
   ; create a valet at the car, linked to the car
@@ -1498,7 +1505,7 @@ to-report test-car-step
 end
 
 to-report test-create-customer-trip
-  let success? true
+  let success? false
   setup
   let test-customer one-of customers
   ask test-customer [
@@ -1509,7 +1516,7 @@ to-report test-create-customer-trip
 end
 
 to-report test-cars-by-ascending-distance
-  let success? true
+  let success? false
   clear-setup
   carowners-builder 10
   valets-builder 1
@@ -1528,7 +1535,7 @@ to-report test-cars-by-ascending-distance
 end
 
 to-report test-find-nearest-customer-car
-  let success? true
+  let success? false
   clear-setup
   carowners-builder 10
   customers-builder 1
@@ -1546,7 +1553,7 @@ to-report test-find-nearest-customer-car
 end
 
 to-report test-find-nearest-valet-car
-  let success? true
+  let success? false
   clear-setup
   carowners-builder 10
   valets-builder 1
@@ -1581,7 +1588,7 @@ end
 
 to-report test-deliveries-available?
   ; need one car and one valet for this test
-  let success? true
+  let success? false
   clear-setup
   carowners-builder 1
   valets-builder 1
@@ -1653,7 +1660,7 @@ to-report test-full-customer-trip
   ask test-customer [
     set success? customer-arrived-at-destination?
   ]
-
+  if not success? [print "test-full-customer-trip failed"]
   report success?
 end
 
