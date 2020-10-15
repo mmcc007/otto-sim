@@ -38,6 +38,11 @@ cars-own [
   car-step-num ; current step along a route (for simulating speed)
   wait-time ; time spent waiting while in service
 ]
+; a valet uses a bike to get to a car
+breed [bikes bike]
+bikes-own [
+  bike-owner ; a valet
+]
 
 ; The car moves when it has an out-going trip link
 ; Also used for display purposes
@@ -121,6 +126,7 @@ to clear-setup
   clear-ticks
 ;  clear-turtles
   ask valets [die]
+  ask bikes [die]
   ask customers [die]
   carowners-die
   ask trips [die]
@@ -189,6 +195,12 @@ to valets-builder [num]
     set valet-earnings 0
     set valet-step-num 0
     set wait-time 0
+    hatch-bikes 1 [
+      set shape "bike"
+      set color yellow
+      set hidden? true
+      set bike-owner myself
+    ]
   ]
 end
 
@@ -199,9 +211,9 @@ to carowners-builder [num]
     set shape "person"
     let point-x a-point
     setxy [xcor] of point-x [ycor] of point-x
-    cars-builder 1 ; each car owner has one car (for now)
     set carowner-cars []
     set carowner-earnings 0
+    cars-builder 1 ; each car owner has one car (for now)
   ]
 end
 
@@ -339,7 +351,7 @@ to car-complete-trip
   set car-step-num 0
   if not is-valet? car-passenger [
     ; release the reservation
-    set color white
+    set color grey
     set car-pending-route []
     set car-pending-route-owner nobody
     set car-valet nobody
@@ -379,6 +391,7 @@ end
 ; valet state transitions/actions
 to valet-claim-car
   set color yellow
+  ask one-of bikes with [bike-owner = myself] [set hidden? false]
   let easiest-car-to-deliver valet-car-available
   let route-to-car calc-route point-of self point-of easiest-car-to-deliver
   display-route route-to-car yellow
@@ -400,10 +413,10 @@ to valet-step-to-car
   let route-length route-distance route
   let num-steps round(route-length / step-length)
   ifelse valet-step-num < num-steps
-  [ take-step route valet-step-num nobody
+  [ take-step route valet-step-num one-of bikes with [bike-owner = myself]
     set valet-step-num valet-step-num + 1
   ][; arrived at car
-    set shape "person" ; from bike
+;    set shape "person" ; from bike
     move-to last route ; TODO route stepper removes this
     set valet-step-num 0
     hide-route route
@@ -413,6 +426,7 @@ end
 to valet-start-car-to-customer
   ask my-out-trips [die]
   set hidden? true ; since getting in car now
+  ask one-of bikes with [bike-owner = myself] [set hidden? true]
   ask valet-claimed-car [
     let route-to-customer calc-route point-of self point-of car-pending-route-owner
     display-route route-to-customer yellow
@@ -2026,25 +2040,25 @@ Polygon -7500403 true true 150 0 0 150 105 150 105 293 195 293 195 150 300 150
 bike
 true
 1
-Line -7500403 false 163 183 228 184
-Circle -7500403 false false 213 184 22
-Circle -7500403 false false 156 187 16
-Circle -16777216 false false 28 148 95
-Circle -16777216 false false 24 144 102
-Circle -16777216 false false 174 144 102
-Circle -16777216 false false 177 148 95
-Polygon -2674135 true true 75 195 90 90 98 92 97 107 192 122 207 83 215 85 202 123 211 133 225 195 165 195 164 188 214 188 202 133 94 116 82 195
-Polygon -2674135 true true 208 83 164 193 171 196 217 85
-Polygon -2674135 true true 165 188 91 120 90 131 164 196
-Line -7500403 false 159 173 170 219
-Line -7500403 false 155 172 166 172
-Line -7500403 false 166 219 177 219
-Polygon -16777216 true false 187 92 198 92 208 97 217 100 231 93 231 84 216 82 201 83 184 85
-Polygon -7500403 true false 71 86 98 93 101 85 74 81
-Rectangle -16777216 true false 75 75 75 90
-Polygon -16777216 true false 70 87 70 72 78 71 78 89
-Circle -7500403 false false 153 184 22
-Line -7500403 false 159 206 228 205
+Circle -2674135 false true 54 24 102
+Line -7500403 false 117 163 116 228
+Circle -7500403 false false 94 213 22
+Circle -7500403 false false 97 156 16
+Circle -2674135 false true 57 28 95
+Circle -2674135 false true 54 174 102
+Circle -2674135 false true 57 177 95
+Polygon -2674135 true true 105 75 210 90 208 98 193 97 178 192 217 207 215 215 177 202 167 211 105 225 105 165 112 164 112 214 167 202 184 94 105 82
+Polygon -2674135 true true 217 208 107 164 104 171 215 217
+Polygon -2674135 true true 112 165 180 91 169 90 104 164
+Line -7500403 false 127 159 81 170
+Line -7500403 false 128 155 128 166
+Line -7500403 false 81 166 81 177
+Polygon -2674135 true true 208 187 208 198 203 208 200 217 207 231 216 231 218 216 217 201 215 184
+Polygon -2674135 true true 214 71 207 98 215 101 219 74
+Rectangle -16777216 true false 210 75 225 75
+Polygon -2674135 true true 213 70 228 70 229 78 211 78
+Circle -7500403 false false 94 153 22
+Line -7500403 false 94 159 95 228
 
 box
 false
