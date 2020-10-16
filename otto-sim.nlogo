@@ -682,7 +682,8 @@ end
 
 ; get a random road network point
 to-report a-point
-  report one-of points with [in-network? = true]
+;  report one-of points with [in-network? = true]
+  report one-of points
 end
 
 ; guarantee a different point
@@ -694,7 +695,8 @@ end
 
 ; reports road point at x,y
 to-report point-at [x y]
-  report one-of points with [xcor = x and ycor = y and in-network? = true] ; expect only none or one
+;  report one-of points with [xcor = x and ycor = y and in-network? = true] ; expect only none or one
+  report one-of points with [xcor = x and ycor = y] ; expect only none or one
 end
 
 ; reports the point under the agent
@@ -863,6 +865,9 @@ to build-road-network
     ; scan for and set members of road network
     ; expect member rate of greater than 94%
     discover-network 0.94
+    ; remove points and segments not in network (for performance)
+    clean-network
+    ; todo merge tiny segments (for performance)
   ]
 end
 
@@ -898,6 +903,13 @@ to add-to-network [next-point show-segments?]
   ]
 end
 
+; remove points not in network
+; this means we don't have to filter for in-network?
+; which should improve performance
+to clean-network
+  ask points [if not in-network? [die]]
+end
+
 ; here's how to convert an agentset to a list of agents:
 to-report set-to-list [a-set]
   report [self] of a-set
@@ -917,6 +929,53 @@ end
 ;*********************************************************************************************
 ; debug
 ;*********************************************************************************************
+
+; merge links below a threshold length
+to simplify
+  init-model
+  ; get a point in a network and undiscover the network so we can start scanning the entire network
+  let starting-point a-point
+  ask points [set in-network? false]
+  let start-num-points count points
+  merge-tiny-segments-at starting-point 1
+  let end-num-points count points
+  print (word "Merged " (start-num-points - end-num-points) " points")
+end
+
+to merge-tiny-segments-at [next-point min-len]
+  ask next-point [
+    if not in-network?
+    [ set in-network? true
+      ; continue on to next points
+      ask segment-neighbors [ merge-tiny-segments-at self min-len]
+      ask my-segments [
+        if link-length < min-len and count [my-segments] of other-end = 1
+        [ merge-this-segment next-point ]
+      ]
+    ]
+  ]
+end
+
+; let Px <= this_seg => Py
+; find a Pz != Px such that Py <= other_seg => pz
+; set Px <= new_seg => pz
+; remove Py which kills this_seg and other_seg
+to merge-this-segment [Px]
+  let Py other-end
+  let Pz nobody
+  ask Py [
+    set Pz one-of segment-neighbors with [self != Px and not in-network?]
+  ]
+  if Pz != nobody [
+    ask Pz [
+      create-segment-with Px [
+        set seg-length link-length
+        set color red
+      ]
+    ]
+    ask Py [die]
+  ]
+end
 
 to run-profile
   setup                  ;; set up the model
@@ -983,7 +1042,7 @@ end
 
 ; show all segments in road network
 to show-network
-  init-model
+;  init-model
   ask points [set in-network? false]
   while [not valid-network? 0.5][
     let any-point one-of points
@@ -991,12 +1050,17 @@ to show-network
       set hidden? false
       set color yellow
     ]
-    print any-point
+;    print any-point
     add-to-network any-point true
   ]
   let in-network-points count points with [in-network? = true]
   let total-points count points
   print (word "found " in-network-points " points in network out of " total-points " (" precision (in-network-points / total-points * 100) 2 "%)")
+end
+
+to hide-network
+  ask segments with [color != grey] [set color grey]
+  ask points with [not hidden?] [set hidden? true set color grey]
 end
 
 ; show links connected to center-point for link-distance (debug)
@@ -1732,9 +1796,9 @@ NIL
 BUTTON
 50
 505
-122
+142
 538
-restart
+NIL
 init-model
 NIL
 1
@@ -1901,6 +1965,7 @@ circle 3
 false
 15
 Circle -1 false true 90 90 118
+Circle -1 true true 143 143 14
 
 cow
 false
@@ -2058,6 +2123,7 @@ square 3
 false
 15
 Rectangle -1 false true 90 90 210 210
+Circle -1 true true 146 146 8
 
 star
 false
