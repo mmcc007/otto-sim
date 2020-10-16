@@ -1,4 +1,4 @@
-extensions [ gis nw ]
+extensions [gis nw profiler]
 
 ; road map is a network of points linked by segments
 breed [ points point ]
@@ -1223,6 +1223,15 @@ end
 ;*********************************************************************************************
 ; debug
 ;*********************************************************************************************
+
+to run-profile
+  setup                  ;; set up the model
+  profiler:start         ;; start profiling
+  repeat 1000 [ go ]       ;; run something you want to measure
+  profiler:stop          ;; stop profiling
+  print profiler:report  ;; view the results
+  profiler:reset         ;; clear the data
+end
 
 ; report current customer, valet and car state
 to report-state
