@@ -1,4 +1,4 @@
-extensions [ gis nw ]
+extensions [gis nw profiler]
 
 ; road map is a network of points linked by segments
 breed [ points point ]
@@ -918,9 +918,11 @@ to-report cars-by-ascending-distance
   let all-car-distances []
   ask cars[
     let dst point-at xcor ycor
-    let distance-to-car distance-between src dst
-    let car-distance list self distance-to-car
-    set all-car-distances fput car-distance all-car-distances
+    if dst != nobody [ ; cars that are not on a point are intransit so ignore
+      let distance-to-car distance-between src dst
+      let car-distance list self distance-to-car
+      set all-car-distances fput car-distance all-car-distances
+    ]
   ]
   let sorted-car-distances sort-by [ [car1 car2] ->
     item 1 car1 < item 1 car2
@@ -1221,6 +1223,15 @@ end
 ;*********************************************************************************************
 ; debug
 ;*********************************************************************************************
+
+to run-profile
+  setup                  ;; set up the model
+  profiler:start         ;; start profiling
+  repeat 1000 [ go ]       ;; run something you want to measure
+  profiler:stop          ;; stop profiling
+  print profiler:report  ;; view the results
+  profiler:reset         ;; clear the data
+end
 
 ; report current customer, valet and car state
 to report-state
@@ -1843,8 +1854,8 @@ GRAPHICS-WINDOW
 30
 -23
 23
-0
-0
+1
+1
 1
 ticks
 30.0
@@ -1892,7 +1903,7 @@ num-carowners
 num-carowners
 1
 100
-1.0
+7.0
 1
 1
 NIL
@@ -1915,14 +1926,14 @@ HORIZONTAL
 
 SLIDER
 15
-10
+45
 187
-43
+78
 num-customers
 num-customers
 1
 100
-1.0
+4.0
 1
 1
 NIL
@@ -1957,14 +1968,14 @@ Santa Monica, CA
 
 SLIDER
 15
-45
-187
-78
+195
+185
+228
 trip-frequency
 trip-frequency
 0
 1
-1.0
+0.1
 0.1
 1
 NIL
@@ -2052,10 +2063,10 @@ https://www.santamonica.gov/isd/gis
 1
 
 SWITCH
-30
-215
-177
-248
+15
+230
+185
+263
 display-routes
 display-routes
 0
@@ -2065,7 +2076,7 @@ display-routes
 OUTPUT
 1025
 255
-1350
+1320
 630
 11
 
