@@ -32,7 +32,7 @@ cars-own [
 ;  reserved? ; when booked by a customer (or the operator)
   car-pending-route ; required when reserving (could be a customer or the operator/observer)
   car-pending-route-owner ; need to know who to hand-off to at destination (could be a customer or a carowner) and also inform them
-;  car-claimed-by-valet? ; has the valet claimed the delivery
+  car-claimed-by-valet? ; has the valet claimed the delivery. This claim remains until the car reaches the pending-route destination. Even after the valet is removed.
   car-valet ; valet that has claimed this delivery
   car-passenger ; either the customer or the valet
   car-step-num ; current step along a route (for simulating speed)
@@ -230,7 +230,7 @@ to cars-builder [num]
     set car-owner myself
     set car-pending-route []
     set car-pending-route-owner nobody
-;    set car-claimed-by-valet? false
+    set car-claimed-by-valet? false
     set car-valet nobody
     set car-passenger nobody
     set car-step-num 0
@@ -355,6 +355,7 @@ to car-complete-trip
     set color grey
     set car-pending-route []
     set car-pending-route-owner nobody
+    set car-claimed-by-valet? false
     set car-valet nobody
   ]
   if car-passenger != nobody [ask car-passenger [set hidden? false]]
@@ -377,6 +378,7 @@ to-report valet-claimed-car?
 end
 
 to-report valet-arrived-at-car?
+  if not valet-claimed-car? [report false] ; for case where reporting state (out of sequence)
   report point-of self = point-of valet-claimed-car
 end
 
@@ -385,6 +387,7 @@ to-report valet-in-car?
 end
 
 to-report valet-arrived-at-customer?
+  if not valet-claimed-car? [report false] ; for case where reporting state (out of sequence)
   let current-customer [car-pending-route-owner] of valet-claimed-car
   report point-of self = point-of current-customer
 end
@@ -394,12 +397,13 @@ to valet-claim-car
   set color yellow
 ;  set size 0.75
   ask one-of bikes with [bike-owner = myself] [set hidden? false]
-  let easiest-car-to-deliver valet-car-available
+  let easiest-car-to-deliver find-nearest-valet-car
   let route-to-car calc-route point-of self point-of easiest-car-to-deliver
   display-route route-to-car yellow
   let route-to-customer calc-route point-of easiest-car-to-deliver point-of [car-pending-route-owner] of easiest-car-to-deliver
   display-route route-to-customer yellow
   ask easiest-car-to-deliver [
+    set car-claimed-by-valet? true
     set car-valet myself
     set color yellow
   ]
@@ -449,19 +453,22 @@ to valet-complete-delivery
   ask current-customer [
     set cust-car-delivered? true
   ]
+  ; no longer valet, but the claim remains until the car arrives at customer destination
+  ask valet-claimed-car [set car-valet nobody]
 end
 
 ; valet helpers
 ; todo change to nearest car with minimum combined route-from-valet-to-car plus route-from-car-to-customer
-to-report valet-car-available
-  report find-nearest-valet-car
-end
+;to-report valet-car-available
+;  report find-nearest-valet-car
+;end
+; reports the car currently claimed by this valet
 to-report valet-claimed-car
-  report one-of cars with [car-valet = myself]
+  report one-of cars with [car-valet = myself and car-claimed-by-valet? = true]
 end
-to-report valet-car-reserved?
-  report car-pending-route != [] and car-pending-route-owner != nobody and car-valet = nobody
-end
+;to-report valet-car-reserved?
+;  report car-pending-route != [] and car-pending-route-owner != nobody and car-valet = nobody and car-claimed-by-valet = false
+;end
 ;*********************************************************************************************
 ; customer methods
 
@@ -488,7 +495,6 @@ to-report customer-randomly-reserve-car?
   ifelse ticks mod 20 = 0 and random-float 1 <= trip-frequency
   ; create reservation
   [
-;    let nearest-car customer-reserved-car
     let nearest-car find-nearest-customer-car
     if nearest-car = nobody [report false]
     ; create trip to random destination
@@ -857,8 +863,11 @@ to-report customer-a-reserved-car? [a-car]
 end
 
 ; a reserved car from the perspective of a valet
+; note when a car is delivered, the valet is removed from the car,
+; but the claim remains to prevent other valets from claiming an already claimed car
+; claim remains until the car arrives at customer destination
 to-report valet-a-reserved-car? [a-car]
-  report [customer-a-reserved-car? self] of a-car and [car-valet] of a-car = nobody
+  report [customer-a-reserved-car? self] of a-car and [car-valet] of a-car = nobody and [car-claimed-by-valet?] of a-car = false
 end
 
 ; find nearest customer car or return nobody
@@ -1208,8 +1217,8 @@ end
 ; debug
 ;*********************************************************************************************
 
-; report current customer, valet and car states
-to report-states
+; report current customer, valet and car state
+to report-state
   clear-output
   ask one-of customers [
     output-print "Customer States:"
@@ -1908,7 +1917,7 @@ num-customers
 num-customers
 1
 100
-1.0
+2.0
 1
 1
 NIL
