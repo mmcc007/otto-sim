@@ -482,10 +482,12 @@ to-report customer-in-car?
 end
 
 to-report customer-reserved-car-arrived?
+  if customer-reserved-car? = false [report false] ; for case where reporting state (out of sequence)
   report point-of customer-reserved-car = point-of self
 end
 
 to-report customer-arrived-at-destination?
+  if customer-reserved-car? = false [report false] ; for case where reporting state (out of sequence)
   report last cust-route = point-of self
 end
 
@@ -505,6 +507,9 @@ to-report customer-randomly-reserve-car?
       set car-pending-route [cust-route] of myself
       set car-pending-route-owner myself
       set color red
+      ; for case where customer and car are in same place
+      ; just get into car and go
+      if point-of myself = point-of self [set car-claimed-by-valet? true]
     ]
     set color red
     set hidden? false
@@ -1917,7 +1922,7 @@ num-customers
 num-customers
 1
 100
-2.0
+1.0
 1
 1
 NIL
