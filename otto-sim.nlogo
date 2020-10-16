@@ -86,6 +86,7 @@ globals [
   step-length ; used to calculate speed and time (in miles)
   speed ; used to calculate distance and time (in mph)
   time-unit ; time passed in each tick, used to correlate to distance travelled and meaning of some counters (calculated as distance/speed?)
+  prev-display-routes ; know when to clear all routes
 ]
 
 ; called at model load
@@ -358,7 +359,7 @@ to car-complete-trip
     set car-claimed-by-valet? false
     set car-valet nobody
   ]
-  if car-passenger != nobody [ask car-passenger [set hidden? false]]
+;  if car-passenger != nobody [ask car-passenger [set hidden? false]]
   set car-passenger nobody
 end
 
@@ -409,8 +410,10 @@ to valet-claim-car
   ]
   create-trip-to last route-to-car [
     set trip-route route-to-car
-    set shape "trip"
-    set color yellow - 2
+    ifelse display-links [
+      set shape "trip"
+      set color yellow - 2
+    ][set hidden? true]
   ]
 end
 
@@ -439,8 +442,10 @@ to valet-start-car-to-customer
     display-route route-to-customer yellow
     create-trip-to car-pending-route-owner [
       set trip-route [route-to-customer] of myself
-      set shape "trip"
-      set color yellow - 2
+      ifelse display-links
+      [ set shape "trip"
+        set color yellow - 2
+      ][set hidden? true]
     ]
     set car-passenger myself
   ]
@@ -494,7 +499,7 @@ end
 ; customer state transitions/actions
 to-report customer-randomly-reserve-car?
   ; define some kind of distribution and create a reservation
-  ifelse ticks mod 20 = 0 and random-float 1 <= trip-frequency
+  ifelse ticks mod 20 = 0 and random-float 1 <= trip-demand
   ; create reservation
   [
     let nearest-car find-nearest-customer-car
@@ -527,15 +532,17 @@ to customer-start-car
 ;    set car-pending-route-owner self ; for the record
     create-trip-to last car-pending-route [
       set trip-route [car-pending-route] of myself
-      set shape "trip"
-      set color red - 2
+      ifelse display-links [
+        set shape "trip"
+        set color red - 2]
+      [set hidden? true]
     ]
   ]
   set hidden? true ; since in car now
 end
 
 to customer-complete-trip
-  set hidden? false
+  set hidden? true ; don't show while not using service
   set cust-payments cust-payments + 1
 end
 
@@ -758,6 +765,14 @@ to-report xy-at-distance-on-line [ line dist ]
 end
 
 to display-route [route route-color]
+  ; check if need to clear all routes due to change in state of display-routes
+  if display-routes != prev-display-routes [
+    if not display-routes [
+      ask segments [set color grey]
+      ask points [set color grey set hidden? true]
+    ]
+    set prev-display-routes display-routes
+  ]
   if display-routes = true and route != false and not empty? route [
     let src first route
     let dst last route
@@ -1635,23 +1650,6 @@ NIL
 NIL
 1
 
-BUTTON
-40
-365
-159
-399
-NIL
-show-route
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
 SLIDER
 15
 115
@@ -1661,7 +1659,7 @@ num-carowners
 num-carowners
 1
 100
-1.0
+9.0
 1
 1
 NIL
@@ -1676,7 +1674,7 @@ num-valets
 num-valets
 1
 100
-1.0
+30.0
 1
 1
 NIL
@@ -1691,7 +1689,7 @@ num-customers
 num-customers
 1
 100
-1.0
+10.0
 1
 1
 NIL
@@ -1729,11 +1727,11 @@ SLIDER
 195
 185
 228
-trip-frequency
-trip-frequency
+trip-demand
+trip-demand
 0
 1
-0.1
+0.2
 0.1
 1
 NIL
@@ -1766,23 +1764,6 @@ BUTTON
 188
 step
 go
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
-BUTTON
-10
-405
-202
-438
-NIL
-show-route-using-points
 NIL
 1
 T
@@ -1827,7 +1808,7 @@ SWITCH
 263
 display-routes
 display-routes
-0
+1
 1
 -1000
 
@@ -1837,6 +1818,17 @@ OUTPUT
 1320
 630
 11
+
+SWITCH
+15
+265
+185
+298
+display-links
+display-links
+0
+1
+-1000
 
 @#$#@#$#@
 ## WHAT IS IT?
