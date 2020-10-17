@@ -1,5 +1,15 @@
 extensions [gis nw profiler]
 
+globals [
+  city-dataset ; holds the GIS polylines
+  step-length ; used to calculate speed and time (in miles)
+  speed ; used to calculate distance and time (in mph)
+  time-unit ; time passed in each tick, used to correlate to distance travelled and meaning of some counters (calculated as distance/speed?)
+  prev-display-routes ; know when to clear all routes
+  who-watching-state ; one of "Customer", "Valet", "Car", "Disabled"
+  enable-watching-state ; is watching true or false
+]
+
 ; road map is a network of points linked by segments
 breed [ points point ]
 points-own [
@@ -81,14 +91,6 @@ breed [carowners carowner]
 carowners-own [
   carowner-cars ; cars owned by the car owner (probably not used)
   carowner-earnings ; accumulated amount earned while car is used by a customer (and a valet?)
-]
-
-globals [
-  city-dataset ; holds the GIS polylines
-  step-length ; used to calculate speed and time (in miles)
-  speed ; used to calculate distance and time (in mph)
-  time-unit ; time passed in each tick, used to correlate to distance travelled and meaning of some counters (calculated as distance/speed?)
-  prev-display-routes ; know when to clear all routes
 ]
 
 ; called at model load
@@ -275,7 +277,7 @@ to go
 
   ask valets [
     if valet-available? [
-      ifelse valet-car-available? and not valet-claimed-car?
+      ifelse not valet-claimed-car? and valet-car-available?
       [ ; if car available claim it
         valet-claim-car
       ][; otherwise wait
@@ -314,6 +316,7 @@ to go
       ]
     ]
   ]
+  watcher
   tick
 end
 
@@ -373,7 +376,6 @@ end
 
 ; valet states
 to-report valet-car-available?
-  ; change to '
   report one-of cars with [valet-a-reserved-car? self]  != nobody
 end
 
@@ -507,7 +509,7 @@ end
 ; customer state transitions/actions
 to-report customer-randomly-reserve-car?
   ; define some kind of distribution and create a reservation
-  ifelse ticks mod 20 = 0 and random-float 1 <= trip-demand
+  ifelse ticks mod 20 = 0 and random-float 1 <= customer-demand
   ; create reservation
   [
     let nearest-car find-nearest-customer-car
@@ -990,6 +992,53 @@ end
 ; num within range inclusive
 to-report num-within-range? [num range-min range-max]
   report num >= range-min and num <= range-max
+end
+
+to watcher
+  (ifelse
+    enable-watching = true [
+      if enable-watching-state != enable-watching [
+;        print (word "enable-watching state transition from " enable-watching-state " to " enable-watching)
+        set enable-watching-state enable-watching
+      ]
+      watcher-state-machine
+    ]
+    enable-watching = false [
+      if enable-watching-state != enable-watching [
+;        print (word "enable-watching state transition from " enable-watching-state " to " enable-watching)
+        reset-perspective
+        set who-watching-state "Disabled" ; reset watcher-state-machine to a start state
+        set enable-watching-state enable-watching
+      ]
+    ]
+    [print "unknown enable-watching-state transition"]
+  )
+end
+
+to watcher-state-machine
+  (ifelse
+    watching = "Customer" [
+      if who-watching-state != watching [
+        watch one-of customers
+        set who-watching-state watching
+      ]
+    ]
+    watching = "Valet" [
+      if who-watching-state != watching [
+        watch one-of valets
+        set who-watching-state watching
+      ]
+    ]
+    watching = "Car" [
+      if who-watching-state != watching [
+        watch one-of cars
+        set who-watching-state watching
+      ]
+    ]
+    ; elsecommands
+    [
+      print "unknown who-watching-state transition"
+  ])
 end
 
 ;*********************************************************************************************
@@ -1766,7 +1815,7 @@ num-customers
 num-customers
 1
 100
-1.0
+2.0
 1
 1
 NIL
@@ -1804,11 +1853,11 @@ SLIDER
 195
 185
 228
-trip-demand
-trip-demand
+customer-demand
+customer-demand
 0
 1
-0.1
+1.0
 0.1
 1
 NIL
@@ -1880,9 +1929,9 @@ https://www.santamonica.gov/isd/gis
 
 SWITCH
 15
-230
+260
 185
-263
+293
 display-routes
 display-routes
 0
@@ -1898,11 +1947,32 @@ OUTPUT
 
 SWITCH
 15
-265
+295
 185
-298
+328
 display-links
 display-links
+1
+1
+-1000
+
+CHOOSER
+15
+390
+185
+435
+watching
+watching
+"Customer" "Valet" "Car"
+0
+
+SWITCH
+15
+355
+185
+388
+enable-watching
+enable-watching
 0
 1
 -1000
