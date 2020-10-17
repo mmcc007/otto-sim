@@ -36,6 +36,7 @@ cars-own [
   car-valet ; valet that has claimed this delivery
   car-passenger ; either the customer or the valet
   car-step-num ; current step along a route (for simulating speed)
+  crnt-segment-xy ; the car's point on the current segment
   wait-time ; time spent waiting while in service
 ]
 ; a valet uses a bike to get to a car
@@ -73,6 +74,7 @@ valets-own [
 ;  valet-arrived-at-customer? ; has the valet arrived at the customer?
   valet-earnings ; accumulated amount earned for delivering cars
   valet-step-num ; current step along a route (during delivery)
+  crnt-segment-xy ; the valet's point on the current segment
   wait-time ; time spent waiting between deliveries while available
 ]
 breed [carowners carowner]
@@ -408,6 +410,8 @@ to valet-claim-car
     set car-valet myself
     set color yellow
   ]
+  let src first route-to-car
+  set crnt-segment-xy (list [xcor] of src [ycor] of src)
   create-trip-to last route-to-car [
     set trip-route route-to-car
     ifelse display-links [
@@ -440,6 +444,8 @@ to valet-start-car-to-customer
   ask valet-claimed-car [
     let route-to-customer calc-route point-of self point-of car-pending-route-owner
     display-route route-to-customer yellow
+    let src first route-to-customer
+    set crnt-segment-xy (list [xcor] of src [ycor] of src)
     create-trip-to car-pending-route-owner [
       set trip-route [route-to-customer] of myself
       ifelse display-links
@@ -453,6 +459,7 @@ end
 
 to valet-complete-delivery
   set color grey
+  set hidden? false
   ; inform customer of delivery
   let current-customer [car-pending-route-owner] of valet-claimed-car
   ask current-customer [
@@ -528,6 +535,8 @@ to customer-start-car
     set color red
     set car-passenger myself
     display-route car-pending-route red
+;    let src first car-pending-route
+    set crnt-segment-xy (list xcor ycor)
 ;    set car-pending-route cust-route ; for the record
 ;    set car-pending-route-owner self ; for the record
     create-trip-to last car-pending-route [
@@ -636,21 +645,31 @@ end
 to take-step [route step-num passenger]
   let current-distance step-num * step-length
   let line find-line-on-route route current-distance
+  ; line is of form [src,dst,length]
+  ; calc length xy1 <==> xy2 already stepped on this line
+  let p1 item 0 line
+  let xy1 (list [xcor] of p1 [ycor] of p1)
+  let xy2 crnt-segment-xy
+  let dist-stepped line-seg-length xy1 xy2
   ; find point on route to position self (car or valet)
-  let xy xy-at-distance-on-line line step-length
+  let distance-on-line dist-stepped + step-length
+  let xy xy-at-distance-on-line line distance-on-line
   let x item 0 xy
   let y item 1 xy
   let end-point item 1 line
-  face end-point
-;  if shape = "wheels"[right 90]
   setxy x y
+  let line-len item 2 line
+  ; don't change bearing if overstepped line
+  if distance-on-line <= line-len
+  [ face end-point]
   if passenger != nobody [
-;    print passenger
     ask passenger [
-      face end-point
       setxy x y
+      if distance-on-line <= line-len
+      [ face end-point]
     ]
   ]
+  set crnt-segment-xy xy
 end
 
 ; Generate a list of [point]s along a [route] from the [point]s [src] to [dst].
@@ -761,7 +780,23 @@ to-report xy-at-distance-on-line [ line dist ]
   let endy [ycor] of end-point
   let x startx + (endx - startx) * dist / line-len
   let y starty + (endy - starty) * dist / line-len
+  ; limit coords to this world (because of overstep)
+  if not in-this-world? x y [
+    ; this happens rarely and setting to zero should be corrected in next tick
+    set x 0
+    set y 0
+  ]
   report list x y
+end
+
+; get the distance between two points
+to-report line-seg-length [xy1 xy2]
+  let x1 item 0 xy1
+  let y1 item 1 xy1
+  let x2 item 0 xy2
+  let y2 item 1 xy2
+  let dist sqrt ((x2 - x1) ^ 2 + (y2 - y1) ^ 2)
+  report dist
 end
 
 to display-route [route route-color]
@@ -939,6 +974,15 @@ end
 to-report link-list-to-set [a-list]
 ;  report links with [member? self a-list]
   report link-set a-list
+end
+
+to-report in-this-world? [x y]
+  report num-within-range? x min-pxcor max-pxcor and num-within-range? y min-pycor max-pycor
+end
+
+; num within range inclusive
+to-report num-within-range? [num range-min range-max]
+  report num >= range-min and num <= range-max
 end
 
 ;*********************************************************************************************
@@ -1155,7 +1199,12 @@ to unit-tests
   if success? [set success? test-find-nearest-valet-car]
 ;  if success? [set success? test-deliveries-available?]
   if success? [set success? test-full-customer-trip]
-  ifelse success? [print "passed" clear-setup][print "failed"]
+  ifelse success? [print "passed" clear-test-setup][print "failed"]
+end
+
+to clear-test-setup
+  clear-setup
+  ask points with [color = cyan][die]
 end
 
 to-report test-calc-route
@@ -1209,29 +1258,53 @@ end
 
 to-report test-xy-at-distance-on-line
   let success? false
-  let src a-point
-  let dst other-point src
-  let line (list src dst 0.0000000001)
-  let xy xy-at-distance-on-line line 0.0000000001
-  set success? num-within-range? item 0 xy min-pxcor max-pxcor and num-within-range? item 1 xy min-pycor max-pycor
-  if not success? [print "fxy-at-distance-on-line failed"]
+  clear-test-setup
+  ; use a segment so we can display the result
+  let test-seg one-of segments
+  ask test-seg [set color red]
+  let src [end1] of test-seg
+  let dst [end2] of test-seg
+  let len [link-length] of test-seg
+  let line (list src dst len)
+  let xy xy-at-distance-on-line line (len / 2)
+  ; drop a marker at the calculated point
+  create-points 1 [
+    set shape "circle 3" set color cyan
+    setxy item 0 xy item 1 xy
+  ]
+  set success? in-this-world? item 0 xy item 1 xy
+  if not success? [print "xy-at-distance-on-line failed"]
   report success?
 end
 
 to-report test-take-step
   let success? false
   clear-setup
-  set step-length 0.000000001
+  set step-length 0.1
   valets-builder 1
   customers-builder 1
   let test-valet one-of valets
   let test-customer one-of customers
-  let src a-point
+  let test-segment one-of segments
+  let src [end1] of test-segment
+  let dst [end2] of test-segment
+  let len [link-length] of test-segment
   ask test-valet [move-to src]
   ask test-customer [move-to src]
-  let route calc-route-with-rnd-dst src
-  display-route route yellow
-  ask test-valet [take-step route 1 test-customer]
+;  let route (list (list src dst) (list test-segment) len)
+  let route-points (list src dst)
+  display-route route-points yellow
+  let num-steps round(len / step-length)
+  ask test-valet
+  [ set shape "circle 3"
+    set size 0.5
+    set color cyan
+    set crnt-segment-xy (list [xcor] of src [ycor] of src)
+    foreach range num-steps
+    [step ->
+      take-step route-points step test-customer
+    ]
+  ]
   set success? point-of test-valet != src and point-of test-customer != src
   if not success? [print "take-step failed"]
   report success?
@@ -1267,6 +1340,7 @@ to-report test-valet-step-to-car
     ]
     ; start moving
     let route-len route-distance route
+    set crnt-segment-xy (list [xcor] of src [ycor] of src)
     test-helper-steps-to-dst [ -> valet-step-to-car] route-len
 ;    let num-steps round(route-len / step-length)
 ;    foreach but-first range num-steps [ ->
@@ -1280,7 +1354,7 @@ to-report test-valet-step-to-car
       ; sanity check
       let expected-car one-of cars with [car-passenger = test-valet]
       print (word "car " test-car " = "  expected-car)
-      print (word "destination " dst " = " last [car-pending-route] of expected-car)
+;      print (word "destination " dst " = " last [car-pending-route] of expected-car)
       print (word "at a car? " expected-car " = "  at-this-car? expected-car)
 ;      inspect test-customer
       inspect test-valet
@@ -1333,6 +1407,7 @@ to-report test-car-step
   ask test-car [
     set car-passenger test-valet
     let route-length route-distance route-to-customer
+    set crnt-segment-xy (list [xcor] of src [ycor] of src)
     test-helper-steps-to-dst [ -> car-step-to-destination] route-length
     let valet-arrived? false
     ask test-valet [set valet-arrived? valet-arrived-at-customer?]
@@ -1561,11 +1636,6 @@ to test-helper-steps-to-dst [step-command route-length]
 ;  run step-command
 end
 
-; num within range inclusive
-to-report num-within-range? [num range-min range-max]
-  report num >= range-min and num <= range-max
-end
-
 to hatch-valet-at [point-x]
   ask one-of valets [hatch-valets 1 [
       setxy [xcor] of point-x [ycor] of point-x
@@ -1627,8 +1697,8 @@ GRAPHICS-WINDOW
 30
 -23
 23
-1
-1
+0
+0
 1
 ticks
 30.0
@@ -1674,7 +1744,7 @@ num-valets
 num-valets
 1
 100
-30.0
+5.0
 1
 1
 NIL
@@ -1731,7 +1801,7 @@ trip-demand
 trip-demand
 0
 1
-0.2
+1.0
 0.1
 1
 NIL
@@ -1826,7 +1896,7 @@ SWITCH
 298
 display-links
 display-links
-0
+1
 1
 -1000
 
