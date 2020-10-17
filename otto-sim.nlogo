@@ -170,7 +170,7 @@ end
 
 to customers-builder [num]
   create-customers num [
-    set hidden? true
+;    set hidden? true
     set color grey
     set shape "person"
     let point-x a-point
@@ -189,7 +189,7 @@ end
 to valets-builder [num]
   create-valets num [
     set color grey
-    set shape "person"
+    set shape "valet"
     let point-x a-point
     setxy [xcor] of point-x [ycor] of point-x
     set valet-available? true
@@ -514,8 +514,12 @@ to-report customer-randomly-reserve-car?
   ifelse ticks mod (random 20 + 1) = 0 and random-float 1 <= customer-demand
   ; create reservation
   [
+    set color red
+;    set hidden? false
     let nearest-car find-nearest-customer-car
-    if nearest-car = nobody [report false]
+    if nearest-car = nobody [
+      set color grey
+      report false]
     ; create trip to random destination
     set cust-route calc-route-with-rnd-dst point-of self
     display-route cust-route red
@@ -528,8 +532,6 @@ to-report customer-randomly-reserve-car?
       ; just get into car and go
       if point-of myself = point-of self [set car-claimed-by-valet? true]
     ]
-    set color red
-    set hidden? false
     report true
   ]
   [report true] ; skip creating reservation
@@ -558,7 +560,7 @@ to customer-start-car
 end
 
 to customer-complete-trip
-  set hidden? true ; don't show while not using service
+  set color grey ; while not using service
   set cust-payments cust-payments + 1
 end
 
@@ -1058,18 +1060,13 @@ end
 
 to update-subject-label
   if subject != nobody[
-    ask subject [
-      set label (word "wait: " precision wait-time 2)
-    ]
+    ask subject [ set label (word "wait: " precision wait-time 2) ]
   ]
 end
 
 to clear-subject
   if subject != nobody
-  [ask subject [
-    set label ""
-    if is-customer? subject [set hidden? true]
-  ]
+  [ask subject [ set label "" ]
 ]
 end
 
@@ -1847,7 +1844,7 @@ num-customers
 num-customers
 1
 100
-1.0
+2.0
 1
 1
 NIL
@@ -2005,7 +2002,7 @@ SWITCH
 388
 enable-watching
 enable-watching
-1
+0
 1
 -1000
 
@@ -2355,6 +2352,26 @@ Polygon -10899396 true false 105 90 75 75 55 75 40 89 31 108 39 124 60 105 75 10
 Polygon -10899396 true false 132 85 134 64 107 51 108 17 150 2 192 18 192 52 169 65 172 87
 Polygon -10899396 true false 85 204 60 233 54 254 72 266 85 252 107 210
 Polygon -7500403 true true 119 75 179 75 209 101 224 135 220 225 175 261 128 261 81 224 74 135 88 99
+
+valet
+false
+0
+Polygon -7500403 true true 180 195 120 195 90 285 105 300 135 300 150 225 165 300 195 300 210 285
+Polygon -1 true false 120 90 105 90 60 195 90 210 120 150 120 195 180 195 180 150 210 210 240 195 195 90 180 90 165 105 150 165 135 105 120 90
+Polygon -1 true false 123 90 149 141 177 90
+Rectangle -7500403 true true 123 76 176 92
+Circle -7500403 true true 110 5 80
+Line -13345367 false 121 90 194 90
+Line -16777216 false 148 143 150 196
+Rectangle -16777216 true false 116 186 182 198
+Circle -1 true false 152 143 9
+Circle -1 true false 152 166 9
+Rectangle -16777216 true false 179 164 183 186
+Polygon -2674135 true false 180 90 195 90 183 160 180 195 150 195 150 135 180 90
+Polygon -2674135 true false 120 90 105 90 114 161 120 195 150 195 150 135 120 90
+Polygon -2674135 true false 155 91 128 77 128 101
+Rectangle -16777216 true false 118 129 141 140
+Polygon -2674135 true false 145 91 172 77 172 101
 
 wheel
 false
