@@ -159,6 +159,7 @@ to setup
   set step-length .2 ; miles
   set speed 20 ; mph
   set time-unit step-length / speed ; hours
+  set enable-watching-state not enable-watching
 
   customers-builder num-customers
   valets-builder num-valets
@@ -264,7 +265,7 @@ to go
       if customer-reserved-car? [
         if not customer-in-car? [increment-wait 1]
         ; if car arrived start ride of car, taking customer to destination
-        if customer-reserved-car-arrived? [
+        if customer-car-arrived? [
           customer-start-car
         ]
         ; if customer arrived at destination, pay for trip
@@ -281,7 +282,7 @@ to go
       [ ; if car available claim it
         valet-claim-car
       ][; otherwise wait
-        increment-wait 1
+        if not valet-claimed-car? [increment-wait 1]
       ]
       if valet-claimed-car? [
         ; if not in car, step to car
@@ -496,9 +497,9 @@ to-report customer-in-car?
   report customer-in-car != nobody
 end
 
-to-report customer-reserved-car-arrived?
+to-report customer-car-arrived?
   if customer-reserved-car? = false [report false] ; for case where reporting state (out of sequence)
-  report point-of customer-reserved-car = point-of self
+  report not customer-in-car? and point-of customer-reserved-car = point-of self
 end
 
 to-report customer-arrived-at-destination?
@@ -509,7 +510,8 @@ end
 ; customer state transitions/actions
 to-report customer-randomly-reserve-car?
   ; define some kind of distribution and create a reservation
-  ifelse ticks mod 20 = 0 and random-float 1 <= customer-demand
+;  ifelse ticks mod 20 = 0 and random-float 1 <= customer-demand
+  ifelse ticks mod (random 20 + 1) = 0 and random-float 1 <= customer-demand
   ; create reservation
   [
     let nearest-car find-nearest-customer-car
@@ -546,7 +548,9 @@ to customer-start-car
       set trip-route [car-pending-route] of myself
       ifelse display-links [
         set shape "trip"
-        set color red - 2]
+        set color red - 2
+        set hidden? false
+      ]
       [set hidden? true]
     ]
   ]
@@ -995,6 +999,7 @@ to-report num-within-range? [num range-min range-max]
 end
 
 to watcher
+  update-subject-label
   (ifelse
     enable-watching = true [
       if enable-watching-state != enable-watching [
@@ -1006,6 +1011,7 @@ to watcher
     enable-watching = false [
       if enable-watching-state != enable-watching [
 ;        print (word "enable-watching state transition from " enable-watching-state " to " enable-watching)
+        clear-subject
         reset-perspective
         set who-watching-state "Disabled" ; reset watcher-state-machine to a start state
         set enable-watching-state enable-watching
@@ -1019,19 +1025,28 @@ to watcher-state-machine
   (ifelse
     watching = "Customer" [
       if who-watching-state != watching [
-        watch one-of customers
+        clear-subject
+        let a-customer one-of customers
+        ask a-customer [set hidden? false]
+        watch a-customer
         set who-watching-state watching
       ]
     ]
     watching = "Valet" [
       if who-watching-state != watching [
-        watch one-of valets
+        clear-subject
+        let a-valet one-of valets
+        ask a-valet [set hidden? false]
+        watch a-valet
         set who-watching-state watching
       ]
     ]
     watching = "Car" [
       if who-watching-state != watching [
-        watch one-of cars
+        clear-subject
+        let a-car one-of cars
+        ask a-car [set hidden? false]
+        watch a-car
         set who-watching-state watching
       ]
     ]
@@ -1039,6 +1054,23 @@ to watcher-state-machine
     [
       print "unknown who-watching-state transition"
   ])
+end
+
+to update-subject-label
+  if subject != nobody[
+    ask subject [
+      set label (word "wait: " precision wait-time 2)
+    ]
+  ]
+end
+
+to clear-subject
+  if subject != nobody
+  [ask subject [
+    set label ""
+    if is-customer? subject [set hidden? true]
+  ]
+]
 end
 
 ;*********************************************************************************************
@@ -1108,7 +1140,7 @@ to report-state
     output-print "Customer States:"
     output-print (word "  customer-reserved-car?: \t\t" (customer-reserved-car? = true))
     output-print (word "  customer-in-car?: \t\t\t" (customer-in-car? = true))
-    output-print (word "  customer-reserved-car-arrived?: \t" (customer-reserved-car-arrived? = true))
+    output-print (word "  customer-car-arrived?: \t\t" (customer-car-arrived? = true))
     output-print (word "  customer-arrived-at-destination?: \t" (customer-arrived-at-destination? = true))
   ]
   ask one-of valets[
@@ -1608,7 +1640,7 @@ to-report test-full-customer-trip
   let test2-customer-randomly-reserve-car? false
   let test-customer-reserved-car? false
   let test-customer-in-car? false
-  let test-customer-reserved-car-arrived? false
+  let test-customer-car-arrived? false
   let test-customer-arrived-at-destination? false
   ask test-customer [
     set test2-customer-randomly-reserve-car? customer-randomly-reserve-car?
@@ -1647,7 +1679,7 @@ to-report test-full-customer-trip
     set test-valet-arrived-at-customer? valet-arrived-at-customer?
   ]
   ask test-customer [
-    set test-customer-reserved-car-arrived? customer-reserved-car-arrived?
+    set test-customer-car-arrived? customer-car-arrived?
     customer-start-car
     set test-customer-in-car? customer-in-car?
   ]
@@ -1667,7 +1699,7 @@ to-report test-full-customer-trip
     test-valet-arrived-at-customer? and
     test-customer-reserved-car? and
     test-customer-in-car? and
-    test-customer-reserved-car-arrived? and
+    test-customer-car-arrived? and
     test-customer-arrived-at-destination? and
     test-car-reserved? and
     test-car-in-motion? and
@@ -1815,7 +1847,7 @@ num-customers
 num-customers
 1
 100
-2.0
+1.0
 1
 1
 NIL
@@ -1879,7 +1911,7 @@ true
 true
 "" ""
 PENS
-"Cu" 1.0 0 -16777216 true "" "plot mean [wait-time] of customers"
+"Cu" 1.0 0 -2674135 true "" "plot mean [wait-time] of customers"
 "Va" 1.0 0 -1184463 true "" "plot mean [wait-time] of valets"
 "Ca" 1.0 0 -7500403 true "" "plot mean [wait-time] of cars"
 
@@ -1958,9 +1990,9 @@ display-links
 
 CHOOSER
 15
-390
+385
 185
-435
+430
 watching
 watching
 "Customer" "Valet" "Car"
@@ -1973,7 +2005,7 @@ SWITCH
 388
 enable-watching
 enable-watching
-0
+1
 1
 -1000
 
