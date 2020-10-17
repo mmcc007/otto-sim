@@ -373,6 +373,7 @@ end
 
 ; valet states
 to-report valet-car-available?
+  ; change to '
   report one-of cars with [valet-a-reserved-car? self]  != nobody
 end
 
@@ -657,16 +658,22 @@ to take-step [route step-num passenger]
   let x item 0 xy
   let y item 1 xy
   let end-point item 1 line
-  setxy x y
+  ; if overstepped, face following point in route
   let line-len item 2 line
-  ; don't change bearing if overstepped line
-  if distance-on-line <= line-len
-  [ face end-point]
+  if distance-on-line > line-len [
+    let index-next-point position end-point route + 1
+    if index-next-point < length route [set end-point item index-next-point route ]
+  ]
+  setxy x y
+;  if distance-on-line <= line-len [
+    face end-point
+;  ]
   if passenger != nobody [
     ask passenger [
       setxy x y
-      if distance-on-line <= line-len
-      [ face end-point]
+;      if distance-on-line <= line-len[
+        face end-point
+;      ]
     ]
   ]
   set crnt-segment-xy xy
@@ -1729,7 +1736,7 @@ num-carowners
 num-carowners
 1
 100
-9.0
+1.0
 1
 1
 NIL
@@ -1744,7 +1751,7 @@ num-valets
 num-valets
 1
 100
-5.0
+1.0
 1
 1
 NIL
@@ -1759,7 +1766,7 @@ num-customers
 num-customers
 1
 100
-10.0
+1.0
 1
 1
 NIL
@@ -1801,7 +1808,7 @@ trip-demand
 trip-demand
 0
 1
-1.0
+0.1
 0.1
 1
 NIL
@@ -1878,7 +1885,7 @@ SWITCH
 263
 display-routes
 display-routes
-1
+0
 1
 -1000
 
@@ -1896,7 +1903,7 @@ SWITCH
 298
 display-links
 display-links
-1
+0
 1
 -1000
 
@@ -2263,10 +2270,10 @@ Line -7500403 true 84 40 221 269
 wheels
 true
 0
-Circle -7500403 false true 86 11 127
-Circle -7500403 false true 86 161 127
-Circle -7500403 false true 88 13 122
-Circle -7500403 false true 88 163 122
+Circle -7500403 false true 103 28 92
+Circle -7500403 false true 104 179 90
+Circle -7500403 false true 106 31 86
+Circle -7500403 false true 106 181 86
 
 wolf
 false
