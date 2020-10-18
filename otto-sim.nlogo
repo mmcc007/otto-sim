@@ -39,6 +39,7 @@ cars-own [
   car-available-by-car-owner? ; set by car-owner to add/remove fleet in service
   car-in-service? ; set by car-owner and used by operator
   car-owner ; when reserved for return, who to return car to (set on creation)
+  car-earnings ; amount earned by car
 ;  reserved? ; when booked by a customer (or the operator)
   car-pending-route ; required when reserving (could be a customer or the operator/observer)
   car-pending-route-owner ; need to know who to hand-off to at destination (could be a customer or a carowner) and also inform them
@@ -91,7 +92,6 @@ valets-own [
 breed [carowners carowner]
 carowners-own [
   carowner-cars ; cars owned by the car owner (probably not used)
-  carowner-earnings ; accumulated amount earned while car is used by a customer (and a valet?)
 ]
 
 ; called at model load
@@ -219,7 +219,6 @@ to carowners-builder [num]
     let point-x a-point
     setxy [xcor] of point-x [ycor] of point-x
     set carowner-cars []
-    set carowner-earnings 0
     cars-builder 1 ; each car owner has one car (for now)
   ]
 end
@@ -235,6 +234,7 @@ to cars-builder [num]
     set car-available-by-car-owner? true
     set car-in-service? true
     set car-owner myself
+    set car-earnings 0
     set car-pending-route []
     set car-pending-route-owner nobody
     set car-claimed-by-valet? false
@@ -570,7 +570,7 @@ to customer-complete-trip
   customer-release-reservation customer-reserved-car
   set color grey ; while not using service
   set hidden? false
-  set cust-payments cust-payments + 1
+;  set cust-payments cust-payments + 1
 end
 
 ; customer helpers
@@ -706,6 +706,36 @@ to take-step [route step-num passenger]
     ]
   ]
   set crnt-segment-xy xy
+  ; record revenue/cost
+  (ifelse
+    is-car? self [
+;      print word "car step " car-earnings
+      set car-earnings car-earnings + 1
+      if car-passenger != nobody [
+        (ifelse
+          is-valet? car-passenger [
+            ask car-passenger [
+;              print word "valet passenger step " valet-earnings
+              set valet-earnings valet-earnings + 1
+            ]
+          ]
+          is-customer? car-passenger [
+            ask car-passenger [
+;              print word "customer passenger step " cust-payments
+              set cust-payments cust-payments + 1]
+          ]
+          ; elsecommands
+          [ print (word "Error: unexpected agent " car-passenger)]
+        )
+      ]
+    ]
+    is-valet? self [
+;      print word "valet step " valet-earnings
+      set valet-earnings valet-earnings + 1
+    ]
+    ; elsecommands
+    [ print (word "Error: unexpected agent " self)]
+  )
 end
 
 ; Generate a list of [point]s along a [route] from the [point]s [src] to [dst].
@@ -1865,7 +1895,7 @@ num-carowners
 num-carowners
 1
 100
-1.0
+3.0
 1
 1
 NIL
@@ -1880,7 +1910,7 @@ num-valets
 num-valets
 1
 100
-1.0
+3.0
 1
 1
 NIL
@@ -1895,16 +1925,16 @@ num-customers
 num-customers
 1
 100
-2.0
+10.0
 1
 1
 NIL
 HORIZONTAL
 
 BUTTON
-145
+135
 155
-210
+190
 188
 NIL
 go
@@ -1920,9 +1950,9 @@ NIL
 
 TEXTBOX
 795
-75
+85
 1195
-100
+110
 Santa Monica, CA
 20
 7.0
@@ -1930,9 +1960,9 @@ Santa Monica, CA
 
 SLIDER
 15
-195
+310
 185
-228
+343
 customer-demand
 customer-demand
 0
@@ -1940,16 +1970,16 @@ customer-demand
 1.0
 0.1
 1
-NIL
+prob
 HORIZONTAL
 
 PLOT
-1085
-85
-1285
-235
+1025
+40
+1320
+190
 Average Wait Time
-Time
+Tick
 Wait Time
 0.0
 5.0
@@ -1966,7 +1996,7 @@ PENS
 BUTTON
 75
 155
-138
+130
 188
 step
 go
@@ -1981,10 +2011,10 @@ NIL
 1
 
 BUTTON
-50
-505
-142
-538
+25
+600
+117
+633
 NIL
 init-model
 NIL
@@ -1997,65 +2027,137 @@ NIL
 NIL
 1
 
-TEXTBOX
-795
-100
-1075
-120
-https://www.santamonica.gov/isd/gis
-8
-7.0
-1
-
 SWITCH
 15
-260
+385
 185
-293
+418
 display-routes
 display-routes
-0
+1
 1
 -1000
 
 OUTPUT
 1025
-255
+525
 1320
 630
 11
 
 SWITCH
 15
-295
+420
 185
-328
+453
 display-links
 display-links
-0
+1
 1
 -1000
 
 CHOOSER
 15
-385
+485
 185
-430
+530
 watching
 watching
 "Customer" "Valet" "Car"
-1
+0
 
 SWITCH
 15
-355
+455
 185
-388
+488
 enable-watching
 enable-watching
 1
 1
 -1000
+
+SLIDER
+15
+345
+185
+378
+customer-interval
+customer-interval
+50
+1000
+50.0
+50
+1
+ticks
+HORIZONTAL
+
+SLIDER
+15
+195
+185
+228
+customer-price
+customer-price
+0
+100
+8.0
+1
+1
+$/mile
+HORIZONTAL
+
+SLIDER
+15
+230
+185
+263
+valet-cost
+valet-cost
+0
+100
+2.0
+1
+1
+$/mile
+HORIZONTAL
+
+SLIDER
+15
+265
+187
+298
+car-cost
+car-cost
+0
+100
+1.0
+1
+1
+$/mile
+HORIZONTAL
+
+PLOT
+1025
+195
+1320
+345
+Profit/Loss
+Tick
+$
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"Cu" 1.0 0 -2674135 true "" "plot sum [cust-payments] of customers * customer-price"
+"Va" 1.0 0 -1184463 true "" "plot sum [valet-earnings] of valets * valet-cost"
+"Ca" 1.0 0 -7500403 true "" "plot sum [car-earnings] of cars * car-cost"
+"P/L" 1.0 0 -16777216 true "" "plot sum [cust-payments] of customers * customer-price\n- sum [valet-earnings] of valets * valet-cost\n- sum [car-earnings] of cars * car-cost"
+"0" 1.0 0 -16777216 true "" "plot 0"
 
 @#$#@#$#@
 ## WHAT IS IT?
