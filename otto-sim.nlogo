@@ -13,7 +13,7 @@ extensions [gis nw profiler]
 ; On model load, a road network is constructed from a GIS shape file and
 ; displayed. On model setup, customers, valets and cars are placed on the road
 ; network and their state machines initialized. On each tick each agents state
-; machine runs. An agent receives input their positon on the
+; machine runs. Each agent can get input from their location on the
 ; road network relative to other agents, and by receiving messages from other
 ; agents. An agent can record analytics and send output to other agents.
 ;
@@ -36,13 +36,15 @@ globals [
   g-city-dataset ; holds the GIS polylines
   g-step-length ; used to calculate speed and time (in miles)
   g-speed ; used to calculate distance and time (in mph)
-  g-time-unit ; time passed in each tick, used to correlate to distance travelled and meaning of some counters (calculated as distance/speed?)
+  g-time-unit ; time passed in each tick, used to correlate to distance traveled
+              ; and meaning of some counters (calculated as distance/speed?)
   g-customer-color ;
   g-valet-color ;
   g-car-color;
   g-prev-display-routes ; know when to clear all routes
   g-who-watching-state ; one of "Customer", "Valet", "Car", "Disabled"
   g-enable-watching-state ; is watching true or false
+  g-debug-on? ; enable debug trace output to command center
 ]
 
 ; road map is a network of points linked by segments
@@ -52,13 +54,16 @@ points-own [
 ]
 undirected-link-breed [segments segment]
 segments-own [
-  seg-length ; Used by nw extension to find shortest route thru points on the road network.
+  seg-length ; Used by nw extension to find shortest route thru points on the
+             ; road network.
 ]
 
 ; cars travel along the road network
 ; a car can be reserved by:
-;  1. a customer, if available by car owner, in-service, not claimed by a valet and not in use (ie, on a trip), for a ride to a random destination
-;  2. the operator, if available by car owner, not claimed by a valet, and not in use, for repositioning or returning to car-owner
+;  1. a customer, if available by car owner, in-service, not claimed by a
+;     valet and not in use (ie, on a trip), for a ride to a random destination
+;  2. the operator, if available by car owner, not claimed by a valet, and
+;     not in use, for repositioning or returning to car-owner
 ; when reserved a route is recorded, if requested by a customer, the customer is recorded
 ; if reserved by a customer the destination is the same location as the customer (to confirm delivery)
 ; a valet can claim a car if reserved and unclaimed by other valets
@@ -76,9 +81,13 @@ cars-own [
   car-owner ; when reserved for return, who to return car to (set on creation)
   car-earnings ; amount earned by car
 ;  reserved? ; when booked by a customer (or the operator)
-  car-l-pending-route ; required when reserving (could be a customer or the operator/observer)
-  car-pending-route-owner ; need to know who to hand-off to at destination (could be a customer or a carowner) and also inform them
-  car-claimed-by-valet? ; has the valet claimed the delivery. This claim remains until the car reaches the pending-route destination. Even after the valet is removed.
+  car-l-pending-route ; required when reserving (could be a customer or
+                      ; the operator/observer)
+  car-pending-route-owner ; need to know who to hand-off to at destination
+                          ; (could be a customer or a carowner) and also inform them
+  car-claimed-by-valet? ; has the valet claimed the delivery. This claim remains
+                        ; until the car reaches the pending-route destination.
+                        ; Even after the valet is removed.
   car-valet ; valet that has claimed this delivery
   car-passenger ; either the customer or the valet
   car-step-num ; current step along a route (for simulating speed)
@@ -571,36 +580,48 @@ end
 ; customer state transitions/actions
 to-report do-customer-randomly-reserve-car?
   ; define some kind of distribution and create a reservation
+  set-debug-trace "Customer"
+  if g-debug-on? [
+    show ""
+    show word "Reserve car debug on; tick = " ticks
+  ]
+  let success? false
 ;  ifelse ticks mod 20 = 0 and random-float 1 <= customer-demand
   ifelse ticks mod (random 200 + 1) = 0 and random-float 1 <= customer-demand
   ; create reservation
-  [
-;    print "do-customer-randomly-reserve-car?"
-    set color g-customer-color
-;    set hidden? false
+  [ set color g-customer-color
     let nearest-car find-nearest-customer-car
-    if nearest-car = nobody [
+    ifelse nearest-car = nobody [
       set color grey
-      report false]
-    ; create trip to random destination
-    set cust-l-route calc-route-with-rnd-dst point-of self
-    display-route cust-l-route g-customer-color
-    ; reserve the car
-    ask nearest-car [
-      set car-l-pending-route [cust-l-route] of myself
-      set car-pending-route-owner myself
-      set color g-customer-color
-      ; for case where customer and car are in same place
-      ; just get into car and go
-      if point-of myself = point-of self [set car-claimed-by-valet? true]
+      set success? false
+    ][
+      ; create trip to random destination
+      set cust-l-route calc-route-with-rnd-dst point-of self
+      display-route cust-l-route g-customer-color
+      ; reserve the car
+      ask nearest-car [
+        set car-l-pending-route [cust-l-route] of myself
+        set car-pending-route-owner myself
+        set color g-customer-color
+        ; for case where customer and car are in same place
+        ; just get into car and go
+        if point-of myself = point-of self [set car-claimed-by-valet? true]
+      ]
+      if g-debug-on? [show word "Nearest car - " nearest-car]
+      set success? true
     ]
-    report true
   ]
-  [report true] ; skip creating reservation
+  [set success? true] ; skip creating reservation
+  if g-debug-on? [show word "Reserve car procedure completed with success: " success? ]
+  report success?
 end
 
 to do-customer-start-car
-;  print "do-customer-start-car"
+  set-debug-trace "Customer"
+  if g-debug-on? [
+    show ""
+    show word "Customer start car debug on; tick = " ticks
+  ]
   ask customer-reserved-car [
     set color g-customer-color
     set car-passenger myself
@@ -620,14 +641,20 @@ to do-customer-start-car
     ]
   ]
   set hidden? true ; since in car now
+  if g-debug-on? [show "Customer start car procedure completed." ]
 end
 
 to do-customer-complete-trip
-;  print "do-customer-complete-trip"
+  set-debug-trace "Customer"
+  if g-debug-on? [
+    show ""
+    show word "Customer complete trip debug on; tick = " ticks
+  ]
   customer-release-reservation customer-reserved-car
   set color grey ; while not using service
   set hidden? false
 ;  set cust-payments cust-payments + 1
+  if g-debug-on? [show "Customer complete trip procedure completed." ]
 end
 
 ; customer helpers
@@ -1118,6 +1145,12 @@ end
 ;; SECTION E – NON-OPERATIONAL PROCEDURES
 ;;-----------------------------------------------------------------------------|
 ;;
+
+to set-debug-trace [level]
+  ifelse(debug-trace = true and (trace-level = "All" or trace-level = level))
+  [ set g-debug-on? true]
+  [ set g-debug-on? false]
+end
 
 to watcher
   update-subject-label
@@ -2037,23 +2070,23 @@ HORIZONTAL
 
 PLOT
 1025
-40
+205
 1320
-190
+355
 Average Wait Time
 Tick
 Wait Time
 0.0
 5.0
 0.0
-5.0
+1.0E-4
 true
 true
 "" ""
 PENS
-"Cu" 1.0 0 -2674135 true "" "plot mean [wait-time] of customers"
-"Va" 1.0 0 -1184463 true "" "plot mean [wait-time] of valets"
-"Ca" 1.0 0 -7500403 true "" "plot mean [wait-time] of cars"
+"Cust" 1.0 0 -13791810 true "" "plot sum [wait-time] of customers / (ticks + 1)"
+"Valet" 1.0 0 -6759204 true "" "plot sum [wait-time] of valets / (ticks + 1)"
+"Car" 1.0 0 -7500403 true "" "plot sum [wait-time] of cars / (ticks + 1)"
 
 BUTTON
 75
@@ -2073,10 +2106,10 @@ NIL
 1
 
 BUTTON
-25
-600
-117
-633
+15
+615
+107
+648
 NIL
 init-model
 NIL
@@ -2193,7 +2226,7 @@ car-cost
 car-cost
 0
 100
-7.0
+1.0
 1
 1
 $/mile
@@ -2201,9 +2234,9 @@ HORIZONTAL
 
 PLOT
 1025
-195
+45
 1320
-345
+195
 Profit/Loss
 Tick
 $
@@ -2215,11 +2248,50 @@ true
 true
 "" ""
 PENS
-"Cu" 1.0 0 -2674135 true "" "plot sum [cust-payments] of customers * customer-price"
-"Va" 1.0 0 -1184463 true "" "plot sum [valet-earnings] of valets * valet-cost"
-"Ca" 1.0 0 -7500403 true "" "plot sum [car-earnings] of cars * car-cost"
+"Cust" 1.0 0 -13791810 true "" "plot sum [cust-payments] of customers * customer-price"
+"Valet" 1.0 0 -6759204 true "" "plot sum [valet-earnings] of valets * valet-cost"
+"Car" 1.0 0 -7500403 true "" "plot sum [car-earnings] of cars * car-cost"
 "P/L" 1.0 0 -16777216 true "" "plot sum [cust-payments] of customers * customer-price\n- sum [valet-earnings] of valets * valet-cost\n- sum [car-earnings] of cars * car-cost"
-"0" 1.0 0 -16777216 true "" "plot 0"
+"0" 1.0 0 -16777216 true "" ";; we don't want the \"auto-plot\" feature to cause the\n;; plot's x range to grow when we draw the axis.  so\n;; first we turn auto-plot off temporarily\nauto-plot-off\n;; now we draw an axis by drawing a line from the origin...\nplotxy 0 0\n;; ...to a point that's way, way, way off to the right.\nplotxy 1000000000 0\n;; now that we're done drawing the axis, we can turn\n;; auto-plot back on again\nauto-plot-on"
+
+SWITCH
+15
+535
+185
+568
+debug-trace
+debug-trace
+1
+1
+-1000
+
+CHOOSER
+15
+565
+185
+610
+trace-level
+trace-level
+"All" "Customer" "Valet" "Car"
+3
+
+PLOT
+1330
+385
+1530
+535
+X Coordinates
+position
+turtles
+0.0
+10.0
+0.0
+10.0
+true
+false
+"set-plot-x-range min-pxcor max-pxcor\nset-plot-y-range 0 count turtles\nset-histogram-num-bars 7" ""
+PENS
+"default" 1.0 1 -16777216 true "" "histogram [xcor] of turtles"
 
 @#$#@#$#@
 ## WHAT IS IT?
