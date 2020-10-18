@@ -68,9 +68,9 @@ customers-own [
   cust-reserved-car ; the car that has been reserved
   cust-route ; the route the customer intends to take
   cust-car-delivered? ; has car been delivered?
-  cust-arrived? ; has customer reached destination?
   cust-car-time ; time spent using car
   cust-payments ; accumulated amount paid for access to cars
+  arrived-at-destination? ; has customer reached destination?
   wait-time ; time spent waiting for an available car or for delivery of car
 ]
 ; a valet can have one out-going trip to a car or to a customer
@@ -84,6 +84,7 @@ valets-own [
 ;  valet-arrived-at-customer? ; has the valet arrived at the customer?
   valet-earnings ; accumulated amount earned for delivering cars
   valet-step-num ; current step along a route (during delivery)
+  arrived-at-destination? ; has valet reached destination?
   crnt-segment-xy ; the valet's point on the current segment
   wait-time ; time spent waiting between deliveries while available
 ]
@@ -179,7 +180,7 @@ to customers-builder [num]
     set cust-reserved-car nobody
     set cust-route []
     set cust-car-delivered? false
-    set cust-arrived? false
+    set arrived-at-destination? false
     set cust-car-time 0
     set cust-payments 0
     set wait-time 0
@@ -268,7 +269,7 @@ to go
         if customer-car-arrived? [
           customer-start-car
         ]
-        ; if customer arrived at destination, pay for trip
+        ; if customer arrived at destination, release reservation and pay for trip
         if customer-arrived-at-destination? [
           customer-complete-trip
         ]
@@ -357,16 +358,17 @@ to car-complete-trip
   hide-route [trip-route] of one-of my-out-trips
   ask my-out-trips [die]
   set car-step-num 0
-  if not is-valet? car-passenger [
-    ; release the reservation
-    set color grey
-    set car-pending-route []
-    set car-pending-route-owner nobody
-    set car-claimed-by-valet? false
-    set car-valet nobody
-  ]
-;  if car-passenger != nobody [ask car-passenger [set hidden? false]]
-  set car-passenger nobody
+;  if not is-valet? car-passenger [
+;    ; release the reservation
+;    set color grey
+;    set car-pending-route []
+;    set car-pending-route-owner nobody
+;    set car-claimed-by-valet? false
+;    set car-valet nobody
+;    ; notify passenger of arrival
+;    ask car-passenger [set arrived-at-destination? true]
+;    set car-passenger nobody
+;  ]
 end
 
 
@@ -494,26 +496,29 @@ to-report customer-reserved-car?
 end
 
 to-report customer-in-car?
-  report customer-in-car != nobody
+  report one-of cars with [car-passenger = myself] != nobody
 end
 
 to-report customer-car-arrived?
   if customer-reserved-car? = false [report false] ; for case where reporting state (out of sequence)
-  report not customer-in-car? and point-of customer-reserved-car = point-of self
+;  report not customer-in-car? and at-this-car? customer-reserved-car
+  report at-this-car? customer-reserved-car and not customer-in-car?
 end
 
 to-report customer-arrived-at-destination?
-  if customer-reserved-car? = false [report false] ; for case where reporting state (out of sequence)
-  report last cust-route = point-of self
+;  if customer-reserved-car? = false [report false] ; for case where reporting state (out of sequence)
+;  report last cust-route = point-of self
+  report at-this-point? last cust-route
 end
 
 ; customer state transitions/actions
 to-report customer-randomly-reserve-car?
   ; define some kind of distribution and create a reservation
 ;  ifelse ticks mod 20 = 0 and random-float 1 <= customer-demand
-  ifelse ticks mod (random 20 + 1) = 0 and random-float 1 <= customer-demand
+  ifelse ticks mod (random 200 + 1) = 0 and random-float 1 <= customer-demand
   ; create reservation
   [
+;    print "customer-randomly-reserve-car?"
     set color red
 ;    set hidden? false
     let nearest-car find-nearest-customer-car
@@ -538,6 +543,7 @@ to-report customer-randomly-reserve-car?
 end
 
 to customer-start-car
+;  print "customer-start-car"
   ask customer-reserved-car [
     set color red
     set car-passenger myself
@@ -560,7 +566,10 @@ to customer-start-car
 end
 
 to customer-complete-trip
+;  print "customer-complete-trip"
+  customer-release-reservation customer-reserved-car
   set color grey ; while not using service
+  set hidden? false
   set cust-payments cust-payments + 1
 end
 
@@ -568,10 +577,22 @@ end
 to-report customer-reserved-car
   report one-of cars with [car-pending-route = [cust-route] of myself and car-pending-route-owner = myself]
 end
-to-report customer-in-car
-  report one-of cars with [car-passenger = myself]
-end
+;to-report customer-reserved-car
+;  report one-of cars with [car-passenger = myself]
+;end
 
+to customer-release-reservation [reserved-car]
+  ask reserved-car [
+    ; release the reservation
+    set color grey
+    set car-pending-route []
+    set car-pending-route-owner nobody
+    set car-claimed-by-valet? false
+    set car-valet nobody
+    ; remove as passenger
+    set car-passenger  nobody
+  ]
+end
 ;*********************************************************************************************
 ; helpers
 ;*********************************************************************************************
@@ -744,26 +765,32 @@ end
 to-report point-of [agent]
   report point-at [xcor] of agent [ycor] of agent
 end
+
 ; end of pointy things section
 
-; start of breed type checking section
+; start of breed type checking and location section
 
-; is a car in the same spot as calling agent?
-to-report at-this-car? [a-potential-car]
-  report is-car? a-potential-car and _agent-here? a-potential-car
+; is this point in the same spot as calling agent?
+to-report at-this-point? [this-point]
+  report is-point? this-point and _agent-here? this-point
 end
 
-; is a customer in the same spot as calling agent?
-to-report at-this-customer? [a-potential-customer]
-  report is-customer? a-potential-customer and _agent-here? a-potential-customer
+; is this car in the same spot as calling agent?
+to-report at-this-car? [this-car]
+  report is-car? this-car and _agent-here? this-car
+end
+
+; is this customer in the same spot as calling agent?
+to-report at-this-customer? [this-customer]
+  report is-customer? this-customer and _agent-here? this-customer
 end
 
 ; is this agent in same spot as calling agent?
 ; should not be called directly except in this section
-to-report _agent-here? [a-potential-agent]
-  report xcor = [xcor] of a-potential-agent and ycor = [ycor] of a-potential-agent
+to-report _agent-here? [this-agent]
+  report xcor = [xcor] of this-agent and ycor = [ycor] of this-agent
 end
-; end of breed type checking section
+; end of breed type checking and location section
 
 ; find a random route
 to-report calc-route-with-rnd-dst [src]
@@ -1060,13 +1087,37 @@ end
 
 to update-subject-label
   if subject != nobody[
-    ask subject [ set label (word "wait: " precision wait-time 2) ]
+    ask subject [
+      set label (word "wait=" format-decimal wait-time 2)
+      if is-customer? self [set hidden? false]
+    ]
+  ]
+end
+
+; maintain number of digits after the decimal point
+to-report format-decimal [float-num place-value]
+  let decimal-str (word precision float-num place-value)
+;  print decimal-str
+  let point-index position "." decimal-str
+  ifelse point-index = false
+  [report (word decimal-str "." (reduce word (n-values place-value ["0"])))]
+  [ let num-digits-after length decimal-str - point-index - 1
+;    print (word "index " point-index ", len " length decimal-str)
+;    print num-digits-after
+    ifelse num-digits-after < place-value
+    [ let missing-zeros reduce word (n-values (place-value - num-digits-after) ["0"])
+      report (word decimal-str missing-zeros)
+    ]
+    [ report decimal-str]
   ]
 end
 
 to clear-subject
   if subject != nobody
-  [ask subject [ set label "" ]
+  [ask subject [
+    set label ""
+;    if is-customer? subject [set hidden? true]
+  ]
 ]
 end
 
@@ -1901,9 +1952,9 @@ Average Wait Time
 Time
 Wait Time
 0.0
-10.0
+5.0
 0.0
-10.0
+5.0
 true
 true
 "" ""
@@ -1981,7 +2032,7 @@ SWITCH
 328
 display-links
 display-links
-1
+0
 1
 -1000
 
@@ -1993,7 +2044,7 @@ CHOOSER
 watching
 watching
 "Customer" "Valet" "Car"
-0
+1
 
 SWITCH
 15
@@ -2002,7 +2053,7 @@ SWITCH
 388
 enable-watching
 enable-watching
-0
+1
 1
 -1000
 
