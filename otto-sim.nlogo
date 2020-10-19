@@ -34,8 +34,11 @@ extensions [gis nw profiler]
 ;;
 globals [
   g-city-dataset ; holds the GIS polylines
+;  g-meters-to-model-length-ratio ; Take a sample segment and measure it on a map
+                                 ; then get the ratio. This is in place of
+                                 ; mapping the two coordinate systems.
   g-step-length ; used to calculate speed and time (in miles)
-  g-speed ; used to calculate distance and time (in mph)
+;  g-speed ; used to calculate distance and time (in mph)
   g-time-unit ; time passed in each tick, used to correlate to distance traveled
               ; and meaning of some counters (calculated as distance/speed?)
   g-customer-color ;
@@ -116,6 +119,7 @@ customers-own [
   cust-car-time ; time spent using car
   cust-payments ; accumulated amount paid for access to cars
   arrived-at-destination? ; has customer reached destination?
+  cust-delivery-time-wait ; time waiting for delivery
   wait-time ; time spent waiting for an available car or for delivery of car
 ]
 ; a valet can have one out-going trip to a car or to a customer
@@ -211,9 +215,8 @@ to setup
   ; only consider points and segments as part of a network
   nw:set-context points segments
   ; setup globals
-  set g-step-length .2 ; miles
-  set g-speed 20 ; mph
-  set g-time-unit g-step-length / g-speed ; hours
+  set g-step-length step-length speed seconds-per-tick
+  set g-time-unit seconds-per-tick / 60 ; minutes
   set g-customer-color sky
   set g-valet-color cyan + 2
   set g-car-color white
@@ -224,6 +227,32 @@ to setup
   carowners-builder num-carowners ; also builds cars
 
   reset-ticks
+end
+
+to-report step-length [mph ticks-in-a-second]
+  let hours-per-tick ticks-in-a-second / (60 * 60)
+  ; distance = time * speed
+  report (mph-to-model-speed mph) * (hours-per-tick) * tuning-coefficient
+end
+
+; model tuning co-efficient to fit real input to model
+to-report tuning-coefficient
+  report (3 / 4) * 0.1
+end
+
+; convert mph to model speed
+to-report mph-to-model-speed [mph]
+  ; speed = distance / time
+  report mph * model-distance-units-per-mile
+end
+
+; get ratio of model distance to miles
+to-report model-distance-units-per-mile
+  ; used 14th Ct between Georgina and Carlyle
+  let map-meters-14thCt 379.64
+  let map-miles-14thCt map-meters-14thCt * 0.000621371
+  let model-distance-14thCt 3.1189261483971626
+  report model-distance-14thCt / map-miles-14thCt
 end
 
 to customers-builder [num]
@@ -240,6 +269,7 @@ to customers-builder [num]
     set arrived-at-destination? false
     set cust-car-time 0
     set cust-payments 0
+    set cust-delivery-time-wait 0
     set wait-time 0
   ]
 end
@@ -653,6 +683,7 @@ to do-customer-complete-trip
   customer-release-reservation customer-reserved-car
   set color grey ; while not using service
   set hidden? false
+  set cust-delivery-time-wait 0
 ;  set cust-payments cust-payments + 1
   if g-debug-on? [show "Customer complete trip procedure completed." ]
 end
@@ -684,6 +715,9 @@ end
 ; may not correspond to actual time
 to increment-wait [time-increment]
   set wait-time wait-time + time-increment * g-time-unit
+  if is-customer? self [
+    set cust-delivery-time-wait cust-delivery-time-wait + time-increment * g-time-unit
+  ]
 end
 
 ; a reserved car from the perspective of a customer
@@ -1054,8 +1088,7 @@ to build-road-network
                 set in-network? false ; in a road network?
               ]
             ]
-          ][; existing point found so this is an intersection
-            ask existing-point [set shape "square 3"]
+          ][; existing point found
             ifelse first-point = nobody
             [ ; first point already exists so no need to create a point
               set first-point existing-point
@@ -1068,6 +1101,9 @@ to build-road-network
         ]
       ]
     ]
+    ; change shape of intersections
+    ask points with [count my-segments > 2] [set shape "square 3"]
+
     ; scan for and set members of road network
     ; expect member rate of greater than 94%
     discover-network 0.94
@@ -1102,7 +1138,7 @@ to add-to-network [next-point show-segments?]
   ask next-point [
     if not in-network?
     [ set in-network? true
-      if show-segments? [ask my-segments [set color g-customer-color]]
+      if show-segments? [ask my-segments [set color red]]
       ask segment-neighbors [
         add-to-network self show-segments?]
     ]
@@ -1213,8 +1249,13 @@ end
 to update-subject-label
   if subject != nobody[
     ask subject [
-      set label (word "wait=" format-decimal wait-time 2)
-      if is-customer? self [set hidden? false]
+      ifelse is-customer? self [
+        set hidden? false
+        set label (word "delivery wait=" format-decimal cust-delivery-time-wait 2 " minutes")
+      ][
+        set label (word "total wait=" format-decimal wait-time 2 " minutes")
+      ]
+      if is-customer? self []
     ]
   ]
 end
@@ -1363,12 +1404,13 @@ end
 ; show all segments in road network
 to show-network
 ;  init-model
+  hide-network
   ask points [set in-network? false]
   while [not valid-network? 0.5][
     let any-point one-of points
     ask any-point [
       set hidden? false
-      set color g-valet-color
+      set color yellow
     ]
 ;    print any-point
     add-to-network any-point true
@@ -1381,6 +1423,16 @@ end
 to hide-network
   ask segments with [color != grey] [set color grey]
   ask points with [not hidden?] [set hidden? true set color grey]
+end
+
+to show-intersections
+  hide-network
+  ask points with [shape = "square 3"] [set hidden? false]
+end
+
+to show-non-intersections
+  hide-network
+  ask points with [shape = "circle 3"] [set hidden? false]
 end
 
 ; show links connected to center-point for link-distance (debug)
@@ -1966,9 +2018,9 @@ ticks
 
 BUTTON
 15
-155
+195
 70
-188
+228
 NIL
 setup
 NIL
@@ -1983,29 +2035,14 @@ NIL
 
 SLIDER
 15
-115
-187
-148
-num-carowners
-num-carowners
-1
-100
-1.0
-1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-15
 80
 187
 113
-num-valets
-num-valets
+num-carowners
+num-carowners
 1
 100
-1.0
+2.0
 1
 1
 NIL
@@ -2016,11 +2053,26 @@ SLIDER
 45
 187
 78
+num-valets
+num-valets
+1
+100
+1.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+15
+10
+187
+43
 num-customers
 num-customers
 1
 100
-2.0
+1.0
 1
 1
 NIL
@@ -2028,9 +2080,9 @@ HORIZONTAL
 
 BUTTON
 135
-155
+195
 190
-188
+228
 NIL
 go
 T
@@ -2055,9 +2107,9 @@ Santa Monica, CA
 
 SLIDER
 15
-310
+350
 185
-343
+383
 customer-demand
 customer-demand
 0
@@ -2090,9 +2142,9 @@ PENS
 
 BUTTON
 75
-155
+195
 130
-188
+228
 step
 go
 NIL
@@ -2107,9 +2159,9 @@ NIL
 
 BUTTON
 15
-615
+655
 107
-648
+688
 NIL
 init-model
 NIL
@@ -2124,9 +2176,9 @@ NIL
 
 SWITCH
 15
-385
+425
 185
-418
+458
 display-routes
 display-routes
 0
@@ -2142,9 +2194,9 @@ OUTPUT
 
 SWITCH
 15
-420
+460
 185
-453
+493
 display-links
 display-links
 1
@@ -2153,30 +2205,30 @@ display-links
 
 CHOOSER
 15
-485
+525
 185
-530
+570
 watching
 watching
 "Customer" "Valet" "Car"
-0
+2
 
 SWITCH
 15
-455
+495
 185
-488
+528
 enable-watching
 enable-watching
-1
+0
 1
 -1000
 
 SLIDER
 15
-345
+385
 185
-378
+418
 customer-interval
 customer-interval
 50
@@ -2189,9 +2241,9 @@ HORIZONTAL
 
 SLIDER
 15
-195
+235
 185
-228
+268
 customer-price
 customer-price
 0
@@ -2204,9 +2256,9 @@ HORIZONTAL
 
 SLIDER
 15
-230
+270
 185
-263
+303
 valet-cost
 valet-cost
 0
@@ -2219,9 +2271,9 @@ HORIZONTAL
 
 SLIDER
 15
-265
+305
 187
-298
+338
 car-cost
 car-cost
 0
@@ -2256,9 +2308,9 @@ PENS
 
 SWITCH
 15
-535
+575
 185
-568
+608
 debug-trace
 debug-trace
 1
@@ -2267,9 +2319,9 @@ debug-trace
 
 CHOOSER
 15
-565
+605
 185
-610
+650
 trace-level
 trace-level
 "All" "Customer" "Valet" "Car"
@@ -2292,6 +2344,36 @@ false
 "set-plot-x-range min-pxcor max-pxcor\nset-plot-y-range 0 count turtles\nset-histogram-num-bars 7" ""
 PENS
 "default" 1.0 1 -16777216 true "" "histogram [xcor] of turtles"
+
+SLIDER
+15
+115
+187
+148
+speed
+speed
+1
+50
+20.0
+1
+1
+mph
+HORIZONTAL
+
+SLIDER
+15
+150
+187
+183
+seconds-per-tick
+seconds-per-tick
+15
+60
+30.0
+15
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
