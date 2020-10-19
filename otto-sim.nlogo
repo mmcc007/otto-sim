@@ -209,7 +209,7 @@ to setup
   set g-step-length step-length speed seconds-per-tick
   set g-time-unit seconds-per-tick / 60 ; minutes
   set g-customer-color sky
-  set g-valet-color cyan + 2
+  set g-valet-color green + 2
   set g-car-color white
   set g-enable-watching-state not enable-watching
   ; setup agents
@@ -2100,7 +2100,7 @@ customer-demand
 customer-demand
 0
 1
-1.0
+0.1
 0.1
 1
 prob
@@ -2123,7 +2123,7 @@ true
 "" ""
 PENS
 "Cust" 1.0 0 -13791810 true "" "plot sum [wait-time] of customers / (ticks + 1)"
-"Valet" 1.0 0 -6759204 true "" "plot sum [wait-time] of valets / (ticks + 1)"
+"Valet" 1.0 0 -6565750 true "" "plot sum [wait-time] of valets / (ticks + 1)"
 "Car" 1.0 0 -7500403 true "" "plot sum [wait-time] of cars / (ticks + 1)"
 
 BUTTON
@@ -2197,7 +2197,7 @@ CHOOSER
 watching
 watching
 "Customer" "Valet" "Car"
-0
+2
 
 SWITCH
 15
@@ -2206,7 +2206,7 @@ SWITCH
 528
 enable-watching
 enable-watching
-0
+1
 1
 -1000
 
@@ -2219,7 +2219,7 @@ customer-interval
 customer-interval
 50
 1000
-50.0
+900.0
 50
 1
 ticks
@@ -2234,7 +2234,7 @@ customer-price
 customer-price
 0
 100
-6.0
+4.0
 1
 1
 $/mile
@@ -2281,13 +2281,13 @@ $
 0.0
 10.0
 0.0
-10.0
+1000.0
 true
 true
 "" ""
 PENS
 "Cust" 1.0 0 -13791810 true "" "plot sum [cust-payments] of customers * customer-price"
-"Valet" 1.0 0 -6759204 true "" "plot sum [valet-earnings] of valets * valet-cost"
+"Valet" 1.0 0 -6565750 true "" "plot sum [valet-earnings] of valets * valet-cost"
 "Car" 1.0 0 -7500403 true "" "plot sum [car-earnings] of cars * car-cost"
 "P/L" 1.0 0 -16777216 true "" "plot sum [cust-payments] of customers * customer-price\n- sum [valet-earnings] of valets * valet-cost\n- sum [car-earnings] of cars * car-cost"
 "0" 1.0 0 -16777216 true "" ";; we don't want the \"auto-plot\" feature to cause the\n;; plot's x range to grow when we draw the axis.  so\n;; first we turn auto-plot off temporarily\nauto-plot-off\n;; now we draw an axis by drawing a line from the origin...\nplotxy 0 0\n;; ...to a point that's way, way, way off to the right.\nplotxy 1000000000 0\n;; now that we're done drawing the axis, we can turn\n;; auto-plot back on again\nauto-plot-on"
@@ -2311,7 +2311,7 @@ CHOOSER
 trace-level
 trace-level
 "All" "Customer" "Valet" "Car"
-3
+0
 
 PLOT
 1330
