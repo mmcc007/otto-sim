@@ -95,6 +95,7 @@ cars-own [
   car-passenger ; either the customer or the valet
   car-step-num ; current step along a route (for simulating speed)
   crnt-l-segment-xy ; the car's point on the current segment
+  car-reservation-wait-time ; time spend waiting for a valet
   wait-time ; time spent waiting while in service
 ]
 ; a valet uses a bike to get to a car
@@ -183,14 +184,11 @@ end
 to clear-setup
   clear-globals
   clear-ticks
-;  clear-turtles
   ask valets [die]
   ask bikes [die]
   ask customers [die]
   carowners-die
   ask trips [die]
-;  clear-patches
-;  clear-links
   ask points with [hidden? = false and color != grey] [
     set hidden? true
     set color grey]
@@ -199,13 +197,6 @@ to clear-setup
   clear-all-plots
   clear-output
 end
-
-; setup model starting scenario
-; color coding:
-;  customer: sky
-;  valet: yellow
-;  cars: yellow if used by valet, red if by customer, otherwise white
-;  all start out grey
 
 ;;-----------------------------------------------------------------------------|
 ;; The setup button is a standard button/procedure.
@@ -328,6 +319,7 @@ to cars-builder [num]
     set car-valet nobody
     set car-passenger nobody
     set car-step-num 0
+    set car-reservation-wait-time 0
     set wait-time 0
   ]
 end
@@ -341,11 +333,6 @@ end
 ;; SECTION D – GO PROCEDURE AND OPERATIONAL SUB-PROCEDURES
 ;;-----------------------------------------------------------------------------|
 ;;
-
-
-;*********************************************************************************************
-; go
-;*********************************************************************************************
 
 ;;-----------------------------------------------------------------------------|
 ;; The go button is a standard button/procedure.
@@ -404,7 +391,7 @@ to go
     if car-available-by-car-owner? and car-in-service? [
       ; if car is reserved by customer (or valet) and not moving, it is waiting (for now)
       ; may modify to be waiting when not moving
-      if car-reserved? and not car-in-motion? [increment-wait 1]
+      if not car-in-motion? [increment-wait 1]
       if car-in-motion? [
         do-car-step-to-destination
         ; if car arrived at destination, release passenger (if any) and remove reservation
@@ -454,17 +441,7 @@ to do-car-complete-trip
   hide-route [trip-l-route] of one-of my-out-trips
   ask my-out-trips [die]
   set car-step-num 0
-;  if not is-valet? car-passenger [
-;    ; release the reservation
-;    set color grey
-;    set car-l-pending-route []
-;    set car-pending-route-owner nobody
-;    set car-claimed-by-valet? false
-;    set car-valet nobody
-;    ; notify passenger of arrival
-;    ask car-passenger [set arrived-at-destination? true]
-;    set car-passenger nobody
-;  ]
+  set car-reservation-wait-time 0
 end
 
 
@@ -712,11 +689,15 @@ end
 ; helpers
 ;*********************************************************************************************
 
-; may not correspond to actual time
 to increment-wait [time-increment]
   set wait-time wait-time + time-increment * g-time-unit
   if is-customer? self [
     set cust-delivery-time-wait cust-delivery-time-wait + time-increment * g-time-unit
+  ]
+  if is-car? self [
+    if car-reserved? [
+      set car-reservation-wait-time car-reservation-wait-time + time-increment * g-time-unit
+    ]
   ]
 end
 
@@ -1249,13 +1230,18 @@ end
 to update-subject-label
   if subject != nobody[
     ask subject [
-      ifelse is-customer? self [
-        set hidden? false
-        set label (word "delivery wait=" format-decimal cust-delivery-time-wait 2 " minutes")
-      ][
-        set label (word "total wait=" format-decimal wait-time 2 " minutes")
-      ]
-      if is-customer? self []
+      (ifelse
+        is-customer? self [
+          set hidden? false
+          set label (word "delivery wait=" format-decimal cust-delivery-time-wait 2 " minutes")
+        ]
+        is-car? self [
+          set label (word "reservation wait=" format-decimal car-reservation-wait-time 2 " minutes")
+        ]
+        ; elsecommands
+        [
+          set label (word "total wait=" format-decimal wait-time 2 " minutes")
+      ])
     ]
   ]
 end
@@ -2042,7 +2028,7 @@ num-carowners
 num-carowners
 1
 100
-2.0
+9.0
 1
 1
 NIL
@@ -2057,7 +2043,7 @@ num-valets
 num-valets
 1
 100
-1.0
+3.0
 1
 1
 NIL
@@ -2072,7 +2058,7 @@ num-customers
 num-customers
 1
 100
-1.0
+10.0
 1
 1
 NIL
@@ -2211,7 +2197,7 @@ CHOOSER
 watching
 watching
 "Customer" "Valet" "Car"
-2
+0
 
 SWITCH
 15
