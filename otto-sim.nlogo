@@ -212,7 +212,6 @@ to setup
   set g-valet-color green + 2
   set g-car-color white
   set g-enable-watching-state not enable-watching
-;  set gl-wait-times [["customer" []] ["valet" []] ["car" []]]
   set gl-wait-times [["customer" [[0 1000000000000]]] ["valet" [[0 1000000000000]]]["car" [[0 1000000000000]]]]
   set g-wait-times-window g-time-unit * 60 ; 1 hour
   set g-clock-interval-avg-wait-times g-time-unit * 60 * 3 ; 3 hours
@@ -1898,7 +1897,7 @@ to-report test-plot-avg-wait-time
   let success? true
   clear-setup
   reset-ticks
-  set gl-wait-times [["customer" [[0 0]]] ["valet" [[0 0]]]["car" [[0 0]]]]
+  set gl-wait-times [["customer" [[0 1000000000000]]] ["valet" [[0 1000000000000]]]["car" [[0 1000000000000]]]]
   set g-time-unit 1 ; minute
   set g-wait-times-window 5
   customers-builder 4
@@ -1906,12 +1905,13 @@ to-report test-plot-avg-wait-time
   carowners-builder 1
   set g-clock-interval-avg-wait-times 20
   clear-all-plots
-  repeat 10 [
-    print moving-average-wait-time "customer"
+  repeat 100 [
     ask one-of customers[increment-wait random 20]
-    ask one-of valets [increment-wait random 10]
-    ask one-of cars [increment-wait random 5]
+    ask one-of valets [increment-wait random 20]
+    ask one-of cars [increment-wait random 20]
     tick
+;    update-plots
+    print (word "moving-average-wait-time customer " moving-average-wait-time "customer")
   ]
   reset-ticks
 ;  print gl-wait-times
@@ -1920,22 +1920,28 @@ to-report test-plot-avg-wait-time
 end
 
 to-report moving-average-wait-time [agent-type]
-  report reduce [ [result-so-far next-item] -> next-item + result-so-far ]
-  map [list-item -> first list-item]
-  item 1 item 0 filter [ l-wait-time -> first l-wait-time = agent-type ] gl-wait-times
+  let total-agent-type-waits reduce [ [result-so-far next-item] -> next-item + result-so-far ]
+    map [list-item -> first list-item]
+    item 1 item 0 filter [ l-wait-time -> first l-wait-time = agent-type ] gl-wait-times
+  report (ifelse-value
+    agent-type = "customer" [ total-agent-type-waits / count customers]
+    agent-type = "valet" [ total-agent-type-waits / count valets ]
+    agent-type = "car" [ total-agent-type-waits / count cars ]
+    [ "Error: unknown agent type" ]
+  )
 end
 
 ; append wait-time to avg list
 to append-wait-times [wait-time-increment]
   (ifelse
     is-customer? self [
-      set gl-wait-times append-wait-times-sublist "customer" wait-time-increment
+      set gl-wait-times append-l-wait-times-named "customer" wait-time-increment
     ]
     is-valet? self [
-      set gl-wait-times append-wait-times-sublist "valet" wait-time-increment
+      set gl-wait-times append-l-wait-times-named "valet" wait-time-increment
     ]
     is-car? self [
-      set gl-wait-times append-wait-times-sublist "car" wait-time-increment
+      set gl-wait-times append-l-wait-times-named "car" wait-time-increment
     ]
     ; otherwise
     [print "Error: unknown agent type"]
@@ -1945,42 +1951,46 @@ to append-wait-times [wait-time-increment]
 end
 
 to-report clean-wait-times
-  report map [ l-wait-time ->
-    clean-l-wait-time l-wait-time
+  ; gl-wait-times is [["customer" [...] "valet" [...] "car" [...]]
+  report map [ l-wait-times-named ->
+    clean-l-wait-times-named l-wait-times-named
   ] gl-wait-times
 end
 
-to-report clean-l-wait-time [l-wait-time]
-;  print l-wait-time
-  report map[list-item ->
-    ifelse-value is-list? list-item
-    [filter[wait-time-item -> wait-time-expired? wait-time-item]list-item]
-    [list-item]
-  ] l-wait-time
+to-report clean-l-wait-times-named [l-wait-times-named]
+  ; l-wait-times-named is ["name" [[]...]]
+  report map[l-wait-times-entry ->
+    ifelse-value is-list? l-wait-times-entry ; skip the list name
+    [filter[l-wait-time-entry -> wait-time-entry-expired? l-wait-time-entry] l-wait-times-entry]
+    [l-wait-times-entry] ; pass thru
+  ] l-wait-times-named
 end
 
-; reports if old wait-time
-to-report wait-time-expired? [l-wait-time-entry]
-;  print l-wait-time-entry
+; reports if old wait-time entry
+to-report wait-time-entry-expired? [l-wait-time-entry]
+  ; l-wait-time-entry is [wait-time time-stamp]
+  ; time stamp is older than start time of window
   report clock-time - (item 1 l-wait-time-entry) < g-wait-times-window
 end
 
 ; append to named sublist in wait-times
-to-report append-wait-times-sublist [list-name wait-time-increment]
-  report map [ l-wait-time ->
-    ifelse-value first l-wait-time = list-name
-    [append-l-wait-time l-wait-time wait-time-increment]
-    [l-wait-time]
+to-report append-l-wait-times-named [list-name wait-time-increment]
+  ; gl-wait-times is [["customer" [...] "valet" [...] "car" [...]]
+  report map [ l-wait-times-named ->
+    ifelse-value first l-wait-times-named = list-name ; pick named list
+    [append-l-wait-time l-wait-times-named wait-time-increment]
+    [l-wait-times-named] ; pass thru
   ] gl-wait-times
 end
 
 ; append l-wait-time
-to-report append-l-wait-time [l-wait-time wait-time-increment]
-  report map[ list-item ->
-    ifelse-value is-list? list-item
-    [lput (list wait-time-increment clock-time) list-item]
-    [list-item]
-  ] l-wait-time
+to-report append-l-wait-time [l-wait-times-named wait-time-increment]
+  ; l-wait-times-named is ["name" [[]...]]
+  report map[ l-wait-time-entry ->
+    ifelse-value is-list? l-wait-time-entry ; skip list name
+    [lput (list wait-time-increment clock-time) l-wait-time-entry]
+    [l-wait-time-entry] ; pass thru
+  ] l-wait-times-named
 end
 
 ;;;
@@ -1989,8 +1999,9 @@ end
 
 ; this draws a vertical filled-in bar from x-val to y-val
 to draw-filled-bar [x-val y-val]
-  let increment 0.08
-  foreach (range 0 y-val increment)[[y] -> plotxy x-val y]
+;  let increment 0.08
+;  foreach (range 0 y-val increment)[[y] -> plotxy x-val y]
+  plotxy x-val y-val
 end
 
 ;*********************************************************************************************
@@ -2225,13 +2236,6 @@ display-routes
 1
 -1000
 
-OUTPUT
-1025
-525
-1320
-630
-11
-
 SWITCH
 15
 460
@@ -2251,7 +2255,7 @@ CHOOSER
 watching
 watching
 "Customer" "Valet" "Car"
-0
+2
 
 SWITCH
 15
@@ -2420,18 +2424,18 @@ PLOT
 205
 1320
 355
-Moving Avg Wait Times (1 hour)
+Moving Avg Wait Times
 Agent
 Minutes
 0.0
 3.0
 0.0
-100.0
+80.0
 true
 true
-"" ""
+"" "clear-plot"
 PENS
-"Cust" 1.0 1 -13791810 true "" "if gl-wait-times != 0 [\n  draw-filled-bar 0 (moving-average-wait-time \"customer\")\n]"
+"Cust" 1.0 1 -13791810 true "" "if gl-wait-times != 0 [\n  clear-plot\n  draw-filled-bar 0 (moving-average-wait-time \"customer\")\n]"
 "Valet" 1.0 1 -6565750 true "" "if gl-wait-times != 0 [\n  draw-filled-bar 1 (moving-average-wait-time \"valet\")\n]"
 "Car" 1.0 1 -7500403 true "" "if gl-wait-times != 0 [\n  draw-filled-bar 2 (moving-average-wait-time \"car\")\n]"
 
