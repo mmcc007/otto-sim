@@ -48,6 +48,9 @@ globals [
   g-who-watching-state ; one of "Customer", "Valet", "Car", "Disabled"
   g-enable-watching-state ; is watching true or false
   g-debug-on? ; enable debug trace output to command center
+  gl-wait-times ; list of wait times
+  g-wait-times-window ; size of window for moving average (measured in time)
+  g-clock-interval-avg-wait-times ; the interval for tracking and plotting avg wait times
 ]
 
 ; road map is a network of points linked by segments
@@ -106,7 +109,6 @@ bikes-own [
 
 ; The car moves when it has an out-going trip link
 ; Also used for display purposes
-; (not sure yet where else to use it)
 directed-link-breed [trips trip]
 ; a trip has a route
 trips-own [trip-l-route]
@@ -154,12 +156,10 @@ to startup
 end
 
 to init-model
-;  no-display
   clear-all
   ask patches [set pcolor black + 2]
   load-map
   build-road-network
-;  display
 end
 
 to load-map
@@ -212,6 +212,10 @@ to setup
   set g-valet-color green + 2
   set g-car-color white
   set g-enable-watching-state not enable-watching
+;  set gl-wait-times [["customer" []] ["valet" []] ["car" []]]
+  set gl-wait-times [["customer" [[0 1000000000000]]] ["valet" [[0 1000000000000]]]["car" [[0 1000000000000]]]]
+  set g-wait-times-window g-time-unit * 60 ; 1 hour
+  set g-clock-interval-avg-wait-times g-time-unit * 60 * 3 ; 3 hours
   ; setup agents
   customers-builder num-customers
   valets-builder num-valets
@@ -477,7 +481,6 @@ end
 ; valet state transitions/actions
 to do-valet-claim-car
   set color g-valet-color
-;  set size 0.75
   ask one-of bikes with [bike-owner = myself] [set hidden? false]
   let easiest-car-to-deliver find-nearest-valet-car
   let route-to-car calc-route point-of self point-of easiest-car-to-deliver
@@ -690,13 +693,15 @@ end
 ;*********************************************************************************************
 
 to increment-wait [time-increment]
-  set wait-time wait-time + time-increment * g-time-unit
+  let unit-wait-time time-increment * g-time-unit
+  set wait-time wait-time + unit-wait-time
+  append-wait-times unit-wait-time
   if is-customer? self [
-    set cust-delivery-time-wait cust-delivery-time-wait + time-increment * g-time-unit
+    set cust-delivery-time-wait cust-delivery-time-wait + unit-wait-time
   ]
   if is-car? self [
     if car-reserved? [
-      set car-reservation-wait-time car-reservation-wait-time + time-increment * g-time-unit
+      set car-reservation-wait-time car-reservation-wait-time + unit-wait-time
     ]
   ]
 end
@@ -873,7 +878,6 @@ end
 
 ; get a random road network point
 to-report a-point
-;  report one-of points with [in-network? = true]
   report one-of points
 end
 
@@ -1133,6 +1137,17 @@ to clean-network
   ask points [if not in-network? [die]]
 end
 
+
+; reports real time in g-time-units (usually minutes) passed since start
+to-report clock-time
+  report ticks / g-time-unit
+end
+
+; reports when real time interval reached
+;to-report clock-time-interval-reached? [interval]
+;  report clock-time mod interval = 0
+;end
+
 ; here's how to convert an agentset to a list of agents:
 to-report set-to-list [a-set]
   report [self] of a-set
@@ -1249,13 +1264,10 @@ end
 ; maintain number of digits after the decimal point
 to-report format-decimal [float-num place-value]
   let decimal-str (word precision float-num place-value)
-;  print decimal-str
   let point-index position "." decimal-str
   ifelse point-index = false
   [report (word decimal-str "." (reduce word (n-values place-value ["0"])))]
   [ let num-digits-after length decimal-str - point-index - 1
-;    print (word "index " point-index ", len " length decimal-str)
-;    print num-digits-after
     ifelse num-digits-after < place-value
     [ let missing-zeros reduce word (n-values (place-value - num-digits-after) ["0"])
       report (word decimal-str missing-zeros)
@@ -1266,11 +1278,7 @@ end
 
 to clear-subject
   if subject != nobody
-  [ask subject [
-    set label ""
-;    if is-customer? subject [set hidden? true]
-  ]
-]
+  [ask subject [set label ""]]
 end
 
 ;*********************************************************************************************
@@ -1496,7 +1504,6 @@ to unit-tests
   if success? [set success? test-cars-by-ascending-distance]
   if success? [set success? test-find-nearest-customer-car]
   if success? [set success? test-find-nearest-valet-car]
-;  if success? [set success? test-deliveries-available?]
   if success? [set success? test-full-customer-trip]
   ifelse success? [print "passed" clear-test-setup][print "failed"]
 end
@@ -1802,38 +1809,6 @@ to-report test-find-nearest-valet-car
   report success?
 end
 
-;to-report test-deliveries-available?
-;  ; need one car and one valet for this test
-;  let success? false
-;  clear-setup
-;  carowners-builder 1
-;  valets-builder 1
-;  let test1 true
-;  let test2 true
-;  let test3 true
-;  let test4 true
-;  let test-valet one-of valets
-;  ; initially no deliveries available
-;  ask test-valet [set test1 not deliveries-available?]
-;  ; customer reserves a car
-;  ask one-of cars [set car-l-pending-route (list one-of points)]
-;  ; one delivery available
-;  ask test-valet [set test2 deliveries-available?]
-;  ; another valet claims it
-;  ask one-of cars [set car-valet one-of valets]
-;  ; delivery not available
-;  ask test-valet [set test3 not deliveries-available?]
-;  ; re-init
-;  ; valet has existing delivery, so should return true
-;  ask test-valet [
-;    create-trip-to one-of turtles
-;    set test4 deliveries-available?
-;  ]
-;  set success? test1 and test2 and test3 and test4
-;  if not success? [print "deliveries-available? failed"]
-;  report success?
-;end
-
 to-report test-full-customer-trip
   let success? false
   ; try to get thru first trip
@@ -1919,6 +1894,105 @@ to-report test-full-customer-trip
   report success?
 end
 
+to-report test-plot-avg-wait-time
+  let success? true
+  clear-setup
+  reset-ticks
+  set gl-wait-times [["customer" [[0 0]]] ["valet" [[0 0]]]["car" [[0 0]]]]
+  set g-time-unit 1 ; minute
+  set g-wait-times-window 5
+  customers-builder 4
+  valets-builder 2
+  carowners-builder 1
+  set g-clock-interval-avg-wait-times 20
+  clear-all-plots
+  repeat 10 [
+    print moving-average-wait-time "customer"
+    ask one-of customers[increment-wait random 20]
+    ask one-of valets [increment-wait random 10]
+    ask one-of cars [increment-wait random 5]
+    tick
+  ]
+  reset-ticks
+;  print gl-wait-times
+  if not success? [print "test-plot-avg-wait-time failed"]
+  report success?
+end
+
+to-report moving-average-wait-time [agent-type]
+  report reduce [ [result-so-far next-item] -> next-item + result-so-far ]
+  map [list-item -> first list-item]
+  item 1 item 0 filter [ l-wait-time -> first l-wait-time = agent-type ] gl-wait-times
+end
+
+; append wait-time to avg list
+to append-wait-times [wait-time-increment]
+  (ifelse
+    is-customer? self [
+      set gl-wait-times append-wait-times-sublist "customer" wait-time-increment
+    ]
+    is-valet? self [
+      set gl-wait-times append-wait-times-sublist "valet" wait-time-increment
+    ]
+    is-car? self [
+      set gl-wait-times append-wait-times-sublist "car" wait-time-increment
+    ]
+    ; otherwise
+    [print "Error: unknown agent type"]
+  )
+  ; remove old wait time entries
+  set gl-wait-times clean-wait-times
+end
+
+to-report clean-wait-times
+  report map [ l-wait-time ->
+    clean-l-wait-time l-wait-time
+  ] gl-wait-times
+end
+
+to-report clean-l-wait-time [l-wait-time]
+;  print l-wait-time
+  report map[list-item ->
+    ifelse-value is-list? list-item
+    [filter[wait-time-item -> wait-time-expired? wait-time-item]list-item]
+    [list-item]
+  ] l-wait-time
+end
+
+; reports if old wait-time
+to-report wait-time-expired? [l-wait-time-entry]
+;  print l-wait-time-entry
+  report clock-time - (item 1 l-wait-time-entry) < g-wait-times-window
+end
+
+; append to named sublist in wait-times
+to-report append-wait-times-sublist [list-name wait-time-increment]
+  report map [ l-wait-time ->
+    ifelse-value first l-wait-time = list-name
+    [append-l-wait-time l-wait-time wait-time-increment]
+    [l-wait-time]
+  ] gl-wait-times
+end
+
+; append l-wait-time
+to-report append-l-wait-time [l-wait-time wait-time-increment]
+  report map[ list-item ->
+    ifelse-value is-list? list-item
+    [lput (list wait-time-increment clock-time) list-item]
+    [list-item]
+  ] l-wait-time
+end
+
+;;;
+;;; plotting procedures
+;;;
+
+; this draws a vertical filled-in bar from x-val to y-val
+to draw-filled-bar [x-val y-val]
+  let increment 0.08
+  foreach (range 0 y-val increment)[[y] -> plotxy x-val y]
+end
+
 ;*********************************************************************************************
 ; test helpers
 ;*********************************************************************************************
@@ -1996,8 +2070,8 @@ GRAPHICS-WINDOW
 30
 -23
 23
-0
-0
+1
+1
 1
 ticks
 30.0
@@ -2028,7 +2102,7 @@ num-carowners
 num-carowners
 1
 100
-9.0
+4.0
 1
 1
 NIL
@@ -2043,7 +2117,7 @@ num-valets
 num-valets
 1
 100
-3.0
+2.0
 1
 1
 NIL
@@ -2058,7 +2132,7 @@ num-customers
 num-customers
 1
 100
-10.0
+4.0
 1
 1
 NIL
@@ -2100,31 +2174,11 @@ customer-demand
 customer-demand
 0
 1
-0.1
+1.0
 0.1
 1
 prob
 HORIZONTAL
-
-PLOT
-1025
-205
-1320
-355
-Average Wait Time
-Tick
-Wait Time
-0.0
-5.0
-0.0
-1.0E-4
-true
-true
-"" ""
-PENS
-"Cust" 1.0 0 -13791810 true "" "plot sum [wait-time] of customers / (ticks + 1)"
-"Valet" 1.0 0 -6565750 true "" "plot sum [wait-time] of valets / (ticks + 1)"
-"Car" 1.0 0 -7500403 true "" "plot sum [wait-time] of cars / (ticks + 1)"
 
 BUTTON
 75
@@ -2197,7 +2251,7 @@ CHOOSER
 watching
 watching
 "Customer" "Valet" "Car"
-2
+0
 
 SWITCH
 15
@@ -2219,7 +2273,7 @@ customer-interval
 customer-interval
 50
 1000
-900.0
+50.0
 50
 1
 ticks
@@ -2290,7 +2344,7 @@ PENS
 "Valet" 1.0 0 -6565750 true "" "plot sum [valet-earnings] of valets * valet-cost"
 "Car" 1.0 0 -7500403 true "" "plot sum [car-earnings] of cars * car-cost"
 "P/L" 1.0 0 -16777216 true "" "plot sum [cust-payments] of customers * customer-price\n- sum [valet-earnings] of valets * valet-cost\n- sum [car-earnings] of cars * car-cost"
-"0" 1.0 0 -16777216 true "" ";; we don't want the \"auto-plot\" feature to cause the\n;; plot's x range to grow when we draw the axis.  so\n;; first we turn auto-plot off temporarily\nauto-plot-off\n;; now we draw an axis by drawing a line from the origin...\nplotxy 0 0\n;; ...to a point that's way, way, way off to the right.\nplotxy 1000000000 0\n;; now that we're done drawing the axis, we can turn\n;; auto-plot back on again\nauto-plot-on"
+"0" 1.0 0 -16777216 false "" ";; we don't want the \"auto-plot\" feature to cause the\n;; plot's x range to grow when we draw the axis.  so\n;; first we turn auto-plot off temporarily\nauto-plot-off\n;; now we draw an axis by drawing a line from the origin...\nplotxy 0 0\n;; ...to a point that's way, way, way off to the right.\nplotxy 1000000000 0\n;; now that we're done drawing the axis, we can turn\n;; auto-plot back on again\nauto-plot-on"
 
 SWITCH
 15
@@ -2314,10 +2368,10 @@ trace-level
 0
 
 PLOT
-1330
-385
-1530
-535
+1255
+365
+1455
+515
 X Coordinates
 position
 turtles
@@ -2360,6 +2414,26 @@ seconds-per-tick
 1
 NIL
 HORIZONTAL
+
+PLOT
+1025
+205
+1320
+355
+Moving Avg Wait Times (1 hour)
+Agent
+Minutes
+0.0
+3.0
+0.0
+100.0
+true
+true
+"" ""
+PENS
+"Cust" 1.0 1 -13791810 true "" "if gl-wait-times != 0 [\n  draw-filled-bar 0 (moving-average-wait-time \"customer\")\n]"
+"Valet" 1.0 1 -6565750 true "" "if gl-wait-times != 0 [\n  draw-filled-bar 1 (moving-average-wait-time \"valet\")\n]"
+"Car" 1.0 1 -7500403 true "" "if gl-wait-times != 0 [\n  draw-filled-bar 2 (moving-average-wait-time \"car\")\n]"
 
 @#$#@#$#@
 ## WHAT IS IT?
