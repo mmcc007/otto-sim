@@ -1905,15 +1905,17 @@ to-report test-plot-avg-wait-time
   carowners-builder 1
   set g-clock-interval-avg-wait-times 20
   clear-all-plots
+  let start-time timer
   repeat 100 [
     ask one-of customers[increment-wait random 20]
     ask one-of valets [increment-wait random 20]
     ask one-of cars [increment-wait random 20]
     tick
 ;    update-plots
-    print (word "moving-average-wait-time customer " moving-average-wait-time "customer")
+  ;  print (word "moving-average-wait-time customer " moving-average-wait-time "customer")
   ]
   reset-ticks
+  print (word "time " (timer - start-time))
 ;  print gl-wait-times
   if not success? [print "test-plot-avg-wait-time failed"]
   report success?
@@ -1999,9 +2001,9 @@ end
 
 ; this draws a vertical filled-in bar from x-val to y-val
 to draw-filled-bar [x-val y-val]
-;  let increment 0.08
-;  foreach (range 0 y-val increment)[[y] -> plotxy x-val y]
-  plotxy x-val y-val
+  let increment 0.08
+  foreach (range 0 y-val increment)[[y] -> plotxy x-val y]
+;  plotxy x-val y-val
 end
 
 ;*********************************************************************************************
@@ -2081,17 +2083,17 @@ GRAPHICS-WINDOW
 30
 -23
 23
-1
-1
+0
+0
 1
 ticks
 30.0
 
 BUTTON
-15
-195
-70
-228
+20
+250
+75
+283
 NIL
 setup
 NIL
@@ -2105,40 +2107,40 @@ NIL
 1
 
 SLIDER
-15
+20
+115
+192
+148
+num-carowners
+num-carowners
+1
+100
+3.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+20
 80
-187
+192
 113
-num-carowners
-num-carowners
+num-valets
+num-valets
 1
 100
-4.0
+1.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-15
+20
 45
-187
+192
 78
-num-valets
-num-valets
-1
-100
-2.0
-1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-15
-10
-187
-43
 num-customers
 num-customers
 1
@@ -2150,10 +2152,10 @@ NIL
 HORIZONTAL
 
 BUTTON
-135
+140
+250
 195
-190
-228
+283
 NIL
 go
 T
@@ -2177,25 +2179,25 @@ Santa Monica, CA
 1
 
 SLIDER
-15
-350
-185
-383
+20
+310
+190
+343
 customer-demand
 customer-demand
 0
 1
-1.0
+0.9
 0.1
 1
 prob
 HORIZONTAL
 
 BUTTON
-75
-195
-130
-228
+80
+250
+135
+283
 step
 go
 NIL
@@ -2209,10 +2211,10 @@ NIL
 1
 
 BUTTON
-15
-655
-107
-688
+1225
+475
+1317
+508
 NIL
 init-model
 NIL
@@ -2226,10 +2228,10 @@ NIL
 1
 
 SWITCH
-15
-425
-185
-458
+1030
+475
+1170
+508
 display-routes
 display-routes
 0
@@ -2237,10 +2239,10 @@ display-routes
 -1000
 
 SWITCH
-15
-460
-185
-493
+1030
+510
+1170
+543
 display-links
 display-links
 1
@@ -2248,20 +2250,20 @@ display-links
 -1000
 
 CHOOSER
-15
-525
-185
-570
+1030
+575
+1170
+620
 watching
 watching
 "Customer" "Valet" "Car"
-2
+0
 
 SWITCH
-15
-495
-185
-528
+1030
+545
+1170
+578
 enable-watching
 enable-watching
 1
@@ -2269,61 +2271,61 @@ enable-watching
 -1000
 
 SLIDER
-15
-385
-185
-418
+20
+345
+190
+378
 customer-interval
 customer-interval
-50
+0
 1000
-50.0
+0.0
 50
 1
 ticks
 HORIZONTAL
 
 SLIDER
-15
-235
-185
-268
+20
+400
+190
+433
 customer-price
 customer-price
 0
-100
-4.0
-1
+5
+0.5
+0.05
 1
 $/mile
 HORIZONTAL
 
 SLIDER
-15
-270
-185
-303
+20
+435
+190
+468
 valet-cost
 valet-cost
 0
-100
-2.0
-1
+5
+0.3
+0.05
 1
 $/mile
 HORIZONTAL
 
 SLIDER
-15
-305
-187
-338
+20
+470
+192
+503
 car-cost
 car-cost
 0
-100
-1.0
-1
+5
+0.15
+0.05
 1
 $/mile
 HORIZONTAL
@@ -2351,10 +2353,10 @@ PENS
 "0" 1.0 0 -16777216 false "" ";; we don't want the \"auto-plot\" feature to cause the\n;; plot's x range to grow when we draw the axis.  so\n;; first we turn auto-plot off temporarily\nauto-plot-off\n;; now we draw an axis by drawing a line from the origin...\nplotxy 0 0\n;; ...to a point that's way, way, way off to the right.\nplotxy 1000000000 0\n;; now that we're done drawing the axis, we can turn\n;; auto-plot back on again\nauto-plot-on"
 
 SWITCH
-15
-575
-185
-608
+1180
+545
+1320
+578
 debug-trace
 debug-trace
 1
@@ -2362,38 +2364,20 @@ debug-trace
 -1000
 
 CHOOSER
-15
-605
-185
-650
+1180
+575
+1320
+620
 trace-level
 trace-level
 "All" "Customer" "Valet" "Car"
 0
 
-PLOT
-1255
-365
-1455
-515
-X Coordinates
-position
-turtles
-0.0
-10.0
-0.0
-10.0
-true
-false
-"set-plot-x-range min-pxcor max-pxcor\nset-plot-y-range 0 count turtles\nset-histogram-num-bars 7" ""
-PENS
-"default" 1.0 1 -16777216 true "" "histogram [xcor] of turtles"
-
 SLIDER
-15
-115
-187
-148
+20
+150
+192
+183
 speed
 speed
 1
@@ -2405,10 +2389,10 @@ mph
 HORIZONTAL
 
 SLIDER
-15
-150
-187
-183
+20
+185
+192
+218
 seconds-per-tick
 seconds-per-tick
 15
@@ -2421,23 +2405,138 @@ HORIZONTAL
 
 PLOT
 1025
-205
+235
 1320
-355
+385
 Moving Avg Wait Times
 Agent
 Minutes
 0.0
 3.0
 0.0
-80.0
+10.0
 true
 true
-"" "clear-plot"
+"" "if ticks mod 20 != 0 [stop]\nclear-plot"
 PENS
 "Cust" 1.0 1 -13791810 true "" "if gl-wait-times != 0 [\n  clear-plot\n  draw-filled-bar 0 (moving-average-wait-time \"customer\")\n]"
 "Valet" 1.0 1 -6565750 true "" "if gl-wait-times != 0 [\n  draw-filled-bar 1 (moving-average-wait-time \"valet\")\n]"
 "Car" 1.0 1 -7500403 true "" "if gl-wait-times != 0 [\n  draw-filled-bar 2 (moving-average-wait-time \"car\")\n]"
+
+SLIDER
+1025
+400
+1320
+433
+window
+window
+15
+240
+60.0
+15
+1
+minutes
+HORIZONTAL
+
+TEXTBOX
+20
+295
+190
+321
+Adjust demand
+11
+0.0
+1
+
+TEXTBOX
+20
+30
+170
+48
+Initial configuration
+11
+0.0
+1
+
+TEXTBOX
+20
+235
+170
+253
+Start the model
+11
+0.0
+1
+
+TEXTBOX
+20
+385
+170
+403
+Adjust pricing
+11
+0.0
+1
+
+TEXTBOX
+1025
+30
+1215
+56
+Profit/Loss over entire run (black)
+11
+0.0
+1
+
+TEXTBOX
+1025
+220
+1230
+246
+Moving averages within time window
+11
+0.0
+1
+
+TEXTBOX
+1025
+385
+1210
+411
+Adjust time window size
+11
+0.0
+1
+
+TEXTBOX
+15
+5
+165
+23
+INPUT
+14
+0.0
+1
+
+TEXTBOX
+1025
+5
+1175
+23
+OUTPUT
+13
+0.0
+1
+
+TEXTBOX
+1030
+450
+1180
+468
+OBSERVE
+13
+0.0
+1
 
 @#$#@#$#@
 ## WHAT IS IT?
