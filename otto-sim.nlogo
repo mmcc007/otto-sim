@@ -2115,7 +2115,7 @@ num-carowners
 num-carowners
 1
 100
-3.0
+1.0
 1
 1
 NIL
@@ -2145,7 +2145,7 @@ num-customers
 num-customers
 1
 100
-4.0
+1.0
 1
 1
 NIL
